@@ -63,13 +63,30 @@ jobs:
       run: |
         gradle wasmJsBrowserDistribution --no-daemon || gradle jsBrowserDistribution --no-daemon || true
 
+    - name: Localizar y Organizar Carpeta Web
+      run: |
+        mkdir -p dist-web
+        # Busca recursivamente la carpeta de salida de produccion y copia su contenido
+        TARGET_DIR=$(find . -type d -path "*/build/dist/wasmJs/productionExecutable" | head -n 1)
+        if [ -z "$TARGET_DIR" ]; then
+          TARGET_DIR=$(find . -type d -path "*/build/dist/js/productionExecutable" | head -n 1)
+        fi
+        
+        if [ -n "$TARGET_DIR" ]; then
+          echo "Carpeta de distribucion encontrada en: $TARGET_DIR"
+          cp -r "$TARGET_DIR"/* dist-web/
+        else
+          echo "ERROR: No se encontro ninguna carpeta de distribucion compatible."
+          exit 1
+        fi
+
     - name: Configurar Páginas de GitHub
       uses: actions/configure-pages@v4
 
     - name: Subir Artefacto de la Web
       uses: actions/upload-pages-artifact@v3
       with:
-        path: 'build/dist/wasmJs/productionExecutable'
+        path: 'dist-web'
 
   deploy-web:
     environment:
