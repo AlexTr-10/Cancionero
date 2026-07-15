@@ -301,15 +301,17 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun broadcastOverlayCommand(command: String) {
-        val payload = JSONObject().apply {
-            put("type", "overlay")
-            put("message", command)
-        }.toString()
-        worshipServer?.broadcast(payload)
+        viewModelScope.launch(Dispatchers.IO) {
+            val payload = JSONObject().apply {
+                put("type", "overlay")
+                put("message", command)
+            }.toString()
+            worshipServer?.broadcast(payload)
+        }
     }
 
     private fun broadcastSongChange(songId: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val song = repository.getSongById(songId)
             if (song != null) {
                 val payload = JSONObject().apply {
@@ -345,7 +347,9 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
                 handleIncomingSessionMessage(message)
             },
             onStatusChanged = { status ->
-                _memberStatus.value = status
+                viewModelScope.launch(Dispatchers.Main) {
+                    _memberStatus.value = status
+                }
             }
         )
         worshipClient?.connect(ip, 9876)
@@ -358,39 +362,41 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun handleIncomingSessionMessage(rawMessage: String) {
-        try {
-            val json = JSONObject(rawMessage)
-            when (json.getString("type")) {
-                "overlay" -> {
-                    val message = json.getString("message")
-                    _activeOverlayMessage.value = message
-                    viewModelScope.launch {
-                        delay(4000)
-                        if (_activeOverlayMessage.value == message) {
-                            _activeOverlayMessage.value = null
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                val json = JSONObject(rawMessage)
+                when (json.getString("type")) {
+                    "overlay" -> {
+                        val message = json.getString("message")
+                        _activeOverlayMessage.value = message
+                        viewModelScope.launch {
+                            delay(4000)
+                            if (_activeOverlayMessage.value == message) {
+                                _activeOverlayMessage.value = null
+                            }
                         }
                     }
-                }
-                "song_change" -> {
-                    val songId = json.getLong("songId")
-                    val title = json.getString("title")
-                    
-                    // Show short alert
-                    _activeOverlayMessage.value = "📖 El Director abrió: $title"
-                    viewModelScope.launch {
-                        delay(3000)
-                        if (_activeOverlayMessage.value?.contains(title) == true) {
-                            _activeOverlayMessage.value = null
+                    "song_change" -> {
+                        val songId = json.getLong("songId")
+                        val title = json.getString("title")
+                        
+                        // Show short alert
+                        _activeOverlayMessage.value = "📖 El Director abrió: $title"
+                        viewModelScope.launch {
+                            delay(3000)
+                            if (_activeOverlayMessage.value?.contains(title) == true) {
+                                _activeOverlayMessage.value = null
+                            }
                         }
+                        
+                        // Automatically jump to song detail or worship mode!
+                        // Let's open WorshipMode directly since that's the primary worship screen!
+                        navigateTo(Screen.WorshipMode(songId), addToBackStack = true)
                     }
-                    
-                    // Automatically jump to song detail or worship mode!
-                    // Let's open WorshipMode directly since that's the primary worship screen!
-                    navigateTo(Screen.WorshipMode(songId), addToBackStack = true)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing incoming message: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing incoming message: ${e.message}")
         }
     }
 

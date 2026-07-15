@@ -29,7 +29,9 @@ class WorshipClient(
 
         executor.execute {
             try {
-                socket = Socket()
+                socket = Socket().apply {
+                    keepAlive = true
+                }
                 socket?.connect(InetSocketAddress(host, port), 5000)
                 writer = PrintWriter(socket?.getOutputStream() ?: throw Exception("No output stream"), true)
                 val reader = (socket?.getInputStream() ?: throw Exception("No input stream")).bufferedReader()
@@ -40,7 +42,11 @@ class WorshipClient(
                 while (isRunning) {
                     val line = reader.readLine() ?: break
                     Log.d(TAG, "Client received: $line")
-                    onMessageReceived(line)
+                    try {
+                        onMessageReceived(line)
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Error processing incoming message: ${ex.message}", ex)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Connection failed: ${e.message}")

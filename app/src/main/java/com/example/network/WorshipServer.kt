@@ -30,6 +30,7 @@ class WorshipServer(
                 
                 while (isRunning) {
                     val socket = serverSocket?.accept() ?: break
+                    socket.keepAlive = true // Enable TCP Keep-Alive
                     Log.d(TAG, "Client connected: ${socket.inetAddress.hostAddress}")
                     
                     val handler = ClientHandler(socket)
@@ -46,20 +47,27 @@ class WorshipServer(
     }
 
     fun broadcast(message: String) {
-        synchronized(clients) {
-            val iterator = clients.iterator()
-            while (iterator.hasNext()) {
-                val client = iterator.next()
-                if (client.sendMessage(message)) {
-                    Log.d(TAG, "Sent message to client: $message")
-                } else {
-                    Log.d(TAG, "Failed to send, removing client")
-                    client.close()
-                    iterator.remove()
+        val executor = executorService
+        if (executor != null && !executor.isShutdown) {
+            executor.execute {
+                synchronized(clients) {
+                    val iterator = clients.iterator()
+                    while (iterator.hasNext()) {
+                        val client = iterator.next()
+                        if (client.sendMessage(message)) {
+                            Log.d(TAG, "Sent message to client: $message")
+                        } else {
+                            Log.d(TAG, "Failed to send, removing client")
+                            client.close()
+                            iterator.remove()
+                        }
+                    }
                 }
+                updateClientCount()
             }
+        } else {
+            Log.w(TAG, "Cannot broadcast, executorService is null or shutdown")
         }
-        updateClientCount()
     }
 
     fun stop() {
@@ -119,10 +127,13 @@ class WorshipServer(
         }
 
         fun sendMessage(msg: String): Boolean {
+            val w = writer ?: return false
             return try {
-                writer?.println(msg)
-                writer?.flush()
-                !(writer?.checkError() ?: true)
+                synchronized(w) {
+                    w.println(msg)
+                    w.flush()
+                    !w.checkError()
+                }
             } catch (e: Exception) {
                 false
             }
