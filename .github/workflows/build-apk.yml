@@ -59,9 +59,42 @@ jobs:
     - name: Configurar Gradle
       uses: gradle/actions/setup-gradle@v4
 
-    - name: Compilar Distribución Web (Ver error real)
+    - name: Detectar y Compilar Distribución Web
       run: |
-        gradle wasmJsBrowserDistribution --no-daemon --stacktrace
+        echo "--- BUSCANDO TAREAS DE GRADLE DISPONIBLES ---"
+        # Listamos todas las tareas de Gradle que contengan "Distribution"
+        ./gradlew tasks --all | grep -i "Distribution" || true
+        
+        echo "--- EJECUTANDO COMPILACION COMPATIBLE ---"
+        # Intentamos ejecutar la tarea en el submódulo composeApp si existe, o en la raíz
+        if ./gradlew :composeApp:wasmJsBrowserDistribution --no-daemon; then
+          echo "Compilado con éxito usando :composeApp:wasmJsBrowserDistribution"
+        elif ./gradlew :composeApp:jsBrowserDistribution --no-daemon; then
+          echo "Compilado con éxito usando :composeApp:jsBrowserDistribution"
+        elif ./gradlew wasmJsBrowserDistribution --no-daemon; then
+          echo "Compilado con éxito usando wasmJsBrowserDistribution de raíz"
+        elif ./gradlew jsBrowserDistribution --no-daemon; then
+          echo "Compilado con éxito usando jsBrowserDistribution de raíz"
+        else
+          echo "Intentando compilación genérica de producción..."
+          ./gradlew browserDistribution --no-daemon || ./gradlew distZip --no-daemon || exit 1
+        fi
+
+    - name: Localizar y Organizar Carpeta Web
+      run: |
+        mkdir -p dist-web
+        echo "--- BUSCANDO INDEX.HTML GENERADO ---"
+        # Busca recursivamente el directorio donde se generó el index.html de producción
+        HTML_PATH=$(find . -name "index.html" -path "*/build/*" -not -path "*/reports/*" | head -n 1)
+        
+        if [ -n "$HTML_PATH" ]; then
+          TARGET_DIR=$(dirname "$HTML_PATH")
+          echo "¡Archivos web encontrados en: $TARGET_DIR!"
+          cp -r "$TARGET_DIR"/* dist-web/
+        else
+          echo "ERROR: No se encontró ningún archivo index.html en los directorios de compilación."
+          exit 1
+        fi
 
     - name: Configurar Páginas de GitHub
       uses: actions/configure-pages@v4
@@ -69,7 +102,7 @@ jobs:
     - name: Subir Artefacto de la Web
       uses: actions/upload-pages-artifact@v3
       with:
-        path: 'build/dist/wasmJs/productionExecutable'
+        path: 'dist-web'
 
   deploy-web:
     environment:
