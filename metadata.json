@@ -1,0 +1,6 @@
+{
+  "name": "Cancionero de Alabanza",
+  "description": "Cancionero de alabanza y adoración con sincronización en tiempo real para directores de culto y equipos de alabanza.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
