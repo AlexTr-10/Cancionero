@@ -62,22 +62,22 @@ jobs:
     - name: Detectar y Compilar Distribución Web
       run: |
         echo "--- BUSCANDO TAREAS DE GRADLE DISPONIBLES ---"
-        # Listamos todas las tareas de Gradle que contengan "Distribution"
-        ./gradlew tasks --all | grep -i "Distribution" || true
+        # Usamos gradle global para listar las tareas de distribucion
+        gradle tasks --all | grep -i "Distribution" || true
         
         echo "--- EJECUTANDO COMPILACION COMPATIBLE ---"
-        # Intentamos ejecutar la tarea en el submódulo composeApp si existe, o en la raíz
-        if ./gradlew :composeApp:wasmJsBrowserDistribution --no-daemon; then
+        # Intentamos ejecutar las tareas usando gradle global
+        if gradle :composeApp:wasmJsBrowserDistribution --no-daemon; then
           echo "Compilado con éxito usando :composeApp:wasmJsBrowserDistribution"
-        elif ./gradlew :composeApp:jsBrowserDistribution --no-daemon; then
+        elif gradle :composeApp:jsBrowserDistribution --no-daemon; then
           echo "Compilado con éxito usando :composeApp:jsBrowserDistribution"
-        elif ./gradlew wasmJsBrowserDistribution --no-daemon; then
+        elif gradle wasmJsBrowserDistribution --no-daemon; then
           echo "Compilado con éxito usando wasmJsBrowserDistribution de raíz"
-        elif ./gradlew jsBrowserDistribution --no-daemon; then
+        elif gradle jsBrowserDistribution --no-daemon; then
           echo "Compilado con éxito usando jsBrowserDistribution de raíz"
         else
           echo "Intentando compilación genérica de producción..."
-          ./gradlew browserDistribution --no-daemon || ./gradlew distZip --no-daemon || exit 1
+          gradle browserDistribution --no-daemon || gradle distZip --no-daemon || exit 1
         fi
 
     - name: Localizar y Organizar Carpeta Web
