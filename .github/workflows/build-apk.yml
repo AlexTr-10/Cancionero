@@ -20,10 +20,12 @@ jobs:
         java-version: '17'
 
     - name: Dar Permisos de Ejecución a Gradle
+      working-directory: aplicación
       run: chmod +x gradlew
       continue-on-error: true
 
     - name: Compilar APK (Debug)
+      working-directory: aplicación
       run: ./gradlew assembleDebug
 
     - name: Subir APK Generado
@@ -33,4 +35,3 @@ jobs:
         path: |
           **/build/outputs/apk/debug/*.apk
           **/build/outputs/apk/release/*.apk
-          
