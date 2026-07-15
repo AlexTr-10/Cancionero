@@ -60,8 +60,8 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
 
     - name: Compilar Distribución Web
-      run: gradle wasmJsBrowserDistribution --no-daemon || gradle jsBrowserDistribution --no-daemon
-      continue-on-error: true
+      run: |
+        gradle wasmJsBrowserDistribution --no-daemon || gradle jsBrowserDistribution --no-daemon || true
 
     - name: Configurar Páginas de GitHub
       uses: actions/configure-pages@v4
