@@ -1,6 +1,6 @@
 {
-  "name": "Cancionero de Alabanza",
-  "description": "Cancionero de alabanza y adoración con sincronización en tiempo real para directores de culto y equipos de alabanza.",
+  "name": "Secretaría Eclesiástica",
+  "description": "Aplicación de Secretaría Eclesiástica para gestionar el Boletín Semanal, Cronograma Anual, y visualización en el púlpito.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

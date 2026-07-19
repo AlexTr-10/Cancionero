@@ -1,33 +1,39 @@
 package com.example.ui.screens
 
-import android.app.Activity
-import android.content.Intent
-import android.view.WindowManager
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
+import android.print.PrintManager
+import android.print.pdf.PrintedPdfDocument
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,696 +42,899 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.content.FileProvider
-import com.example.R
-import com.example.data.model.Mosaic
-import com.example.data.model.Song
+import com.example.data.model.AnnualScheduleItem
+import com.example.data.model.BulletinDay
+import com.example.data.model.WeeklyBulletin
 import com.example.ui.viewmodel.Screen
 import com.example.ui.viewmodel.WorshipViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
-val CategoryList = listOf(
-    "Coros", "Himnos", "Himnos Especiales", "Coros Infantiles",
-    "Alabanzas", "Adoración", "Santa Cena", "Evangelismo", "Otros"
-)
-
-fun parseChordLine(line: String): Pair<String, String>? {
-    if (!line.contains("[")) return null
-    val chordBuilder = StringBuilder()
-    val lyricBuilder = StringBuilder()
-    var i = 0
-    while (i < line.length) {
-        if (line[i] == '[') {
-            val endBracket = line.indexOf(']', i)
-            if (endBracket != -1) {
-                val chord = line.substring(i + 1, endBracket)
-                val lyricLen = lyricBuilder.length
-                while (chordBuilder.length < lyricLen) {
-                    chordBuilder.append(' ')
-                }
-                chordBuilder.append(chord)
-                i = endBracket + 1
-                continue
-            }
-        }
-        lyricBuilder.append(line[i])
-        i++
-    }
-    // Ensure both builders have the exact same length by padding with spaces
-    val maxLen = maxOf(chordBuilder.length, lyricBuilder.length)
-    while (chordBuilder.length < maxLen) {
-        chordBuilder.append(' ')
-    }
-    while (lyricBuilder.length < maxLen) {
-        lyricBuilder.append(' ')
-    }
-    return Pair(chordBuilder.toString(), lyricBuilder.toString())
-}
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigationWrapper(viewModel: WorshipViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()
-    val activeOverlayMessage by viewModel.activeOverlayMessage.collectAsState()
-
-    // Handle Android system back presses safely
-    BackHandler(enabled = currentScreen != Screen.Home) {
-        viewModel.navigateBack()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Main Screen Router
-        AnimatedContent(
-            targetState = currentScreen,
-            transitionSpec = {
-                fadeIn() togetherWith fadeOut()
-            },
-            label = "ScreenTransition"
-        ) { screen ->
-            when (screen) {
-                is Screen.Home -> HomeScreen(viewModel)
-                is Screen.SongBook -> SongBookScreen(viewModel)
-                is Screen.SongDetail -> SongDetailScreen(viewModel, screen.songId)
-                is Screen.EditSong -> EditSongScreen(viewModel, screen.songId)
-                is Screen.WorshipMode -> WorshipModeScreen(viewModel, screen.songId, screen.mosaicId, screen.mosaicSongIndex)
-                is Screen.Mosaics -> MosaicsScreen(viewModel)
-                is Screen.CreateMosaic -> CreateMosaicScreen(viewModel)
-                is Screen.Favorites -> FavoritesScreen(viewModel)
-                is Screen.Search -> SearchScreen(viewModel)
-                is Screen.SessionLeader -> SessionLeaderScreen(viewModel)
-                is Screen.SessionMember -> SessionMemberScreen(viewModel)
-                is Screen.ImportExport -> ImportExportScreen(viewModel)
-                is Screen.Settings -> SettingsScreen(viewModel)
-            }
-        }
-
-        // Leader message overlay for team members
-        activeOverlayMessage?.let { msg ->
-            val isWorshipMode = currentScreen is Screen.WorshipMode
-            if (isWorshipMode) {
-                // Top banner notification (large, elegant, temporary, non-blocking)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    val backgroundColor = when {
-                        msg.contains("REPETIMOS") || msg.contains("Repetimos") || msg.uppercase().contains("CORO") -> Color(0xFF1565C0) // Rich Blue
-                        msg.contains("SOLO") || msg.contains("Solo") || msg.uppercase().contains("PIANO") || msg.uppercase().contains("GUITARRA") -> Color(0xFF2E7D32) // Rich Green
-                        msg.contains("TODA") || msg.contains("Toda") || msg.uppercase().contains("BANDA") -> Color(0xFFEF6C00) // Rich Orange
-                        msg.contains("TERMINAMOS") || msg.contains("Finalizar") || msg.contains("Terminar") || msg.uppercase().contains("FIN") -> Color(0xFFC62828) // Rich Red
-                        msg.contains("abrió") || msg.contains("abrio") || msg.contains("Director") -> Color(0xFF673AB7) // Beautiful Purple
-                        else -> Color(0xFF37474F) // Slate Grey
-                    }
-
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("leader_message_top_overlay")
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (msg.contains("abrió") || msg.contains("abrio") || msg.contains("Director")) Icons.Default.QueueMusic else Icons.Default.Campaign,
-                                    contentDescription = "Mensaje del Director",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = if (msg.contains("abrió") || msg.contains("abrio") || msg.contains("Director")) "NUEVA CANCIÓN" else "INSTRUCCIÓN DEL DIRECTOR",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    letterSpacing = 1.2.sp
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = msg,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    lineHeight = 22.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Centered overlay (original behavior for other screens)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.75f))
-                        .clickable(enabled = false) {}, // Scrim block
-                    contentAlignment = Alignment.Center
-                ) {
-                    val backgroundColor = when {
-                        msg.contains("REPETIMOS") || msg.contains("Repetimos") -> Color(0xFF0F4C81) // Deep Blue
-                        msg.contains("SOLO") || msg.contains("Solo") -> Color(0xFF2D6A4F) // Green
-                        msg.contains("TODA") || msg.contains("Toda") -> Color(0xFFD68A1A) // Warm Yellow/Orange
-                        msg.contains("TERMINAMOS") || msg.contains("Finalizar") || msg.contains("Terminar") -> Color(0xFF9E2A2B) // Red
-                        else -> Color(0xFF2D3142) // Dark Slate
-                    }
-
-                    Card(
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .padding(16.dp)
-                            .testTag("leader_message_overlay")
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .padding(28.dp)
-                                .fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Campaign,
-                                contentDescription = "Mensaje del Director",
-                                tint = Color.White,
-                                modifier = Modifier.size(64.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = msg,
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 40.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// 1. HOME SCREEN
-@Composable
-fun HomeScreen(viewModel: WorshipViewModel) {
-    val isSessionActive by viewModel.isSessionActive.collectAsState()
-    val memberStatus by viewModel.memberStatus.collectAsState()
-    val favoritesList by viewModel.favorites.collectAsState()
-    val favoritesCount = favoritesList.size
-    val favoritesSubtitle = if (favoritesCount == 0) {
-        "Mis canciones preferidas"
-    } else if (favoritesCount == 1) {
-        "1 canción guardada"
-    } else {
-        "$favoritesCount canciones guardadas"
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-    ) {
-        // App Header Banner
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.img_worship_banner),
-                contentDescription = "Cancionero Banner",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            // Gradient Overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                            startY = 100f
-                        )
-                    )
-            )
-            // Header Info
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(20.dp)
-            ) {
-                Text(
-                    text = "Cancionero de Alabanza",
-                    color = Color.White,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Ministerio de Música y Adoración",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 14.sp
-                )
-            }
-        }
-
-        // Live Mode Indicators
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (isSessionActive) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .background(Color(0xFF2E7D32).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF4CAF50))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Director Activo",
-                        color = Color(0xFF4CAF50),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            if (memberStatus == com.example.network.WorshipClient.ConnectionStatus.CONNECTED) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .background(Color(0xFF1565C0).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF2196F3))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Conectado al Director",
-                        color = Color(0xFF2196F3),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // Action Grid List
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            item(span = { GridItemSpan(1) }) {
-                HomeCard(
-                    title = "Cancionero",
-                    subtitle = "Todas las canciones",
-                    icon = Icons.Default.LibraryMusic,
-                    color = Color(0xFFD0BCFF),
-                    tag = "btn_cancionero"
-                ) {
-                    viewModel.navigateTo(Screen.SongBook)
-                }
-            }
-            item(span = { GridItemSpan(1) }) {
-                HomeCard(
-                    title = "Mosaicos",
-                    subtitle = "Listas y setlists",
-                    icon = Icons.Default.QueueMusic,
-                    color = Color(0xFF009688),
-                    tag = "btn_mosaicos"
-                ) {
-                    viewModel.navigateTo(Screen.Mosaics)
-                }
-            }
-            item(span = { GridItemSpan(1) }) {
-                HomeCard(
-                    title = "Favoritos",
-                    subtitle = favoritesSubtitle,
-                    icon = Icons.Default.Favorite,
-                    color = Color(0xFFE91E63),
-                    tag = "btn_favoritos"
-                ) {
-                    viewModel.navigateTo(Screen.Favorites)
-                }
-            }
-            item(span = { GridItemSpan(1) }) {
-                HomeCard(
-                    title = "Buscar",
-                    subtitle = "Búsqueda instantánea",
-                    icon = Icons.Default.Search,
-                    color = Color(0xFF2196F3),
-                    tag = "btn_buscar"
-                ) {
-                    viewModel.navigateTo(Screen.Search)
-                }
-            }
-            item(span = { GridItemSpan(2) }) {
-                FeaturedHomeCard(
-                    title = "Modo Director",
-                    subtitle = "Controlar sesión en vivo",
-                    icon = Icons.Default.Campaign,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    iconContainerColor = MaterialTheme.colorScheme.onPrimary,
-                    iconColor = MaterialTheme.colorScheme.primary,
-                    tag = "btn_director"
-                ) {
-                    viewModel.navigateTo(Screen.SessionLeader)
-                }
-            }
-            item(span = { GridItemSpan(2) }) {
-                FeaturedHomeCard(
-                    title = "Modo Integrante",
-                    subtitle = "Unirse a la sesión activa",
-                    icon = Icons.Default.Group,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    iconContainerColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    iconColor = MaterialTheme.colorScheme.secondaryContainer,
-                    tag = "btn_integrante"
-                ) {
-                    viewModel.navigateTo(Screen.SessionMember)
-                }
-            }
-            item(span = { GridItemSpan(1) }) {
-                HomeCard(
-                    title = "Importar/Exportar",
-                    subtitle = "Compartir canciones",
-                    icon = Icons.Default.SwapHoriz,
-                    color = Color(0xFF4CAF50),
-                    tag = "btn_import_export"
-                ) {
-                    viewModel.navigateTo(Screen.ImportExport)
-                }
-            }
-            item(span = { GridItemSpan(1) }) {
-                HomeCard(
-                    title = "Configuración",
-                    subtitle = "Ajustar preferencias",
-                    icon = Icons.Default.Settings,
-                    color = Color(0xFF607D8B),
-                    tag = "btn_configuracion"
-                ) {
-                    viewModel.navigateTo(Screen.Settings)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun HomeCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    color: Color,
-    tag: String,
-    onClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(130.dp)
-            .clickable { onClick() }
-            .testTag(tag),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(color.copy(alpha = 0.15f))
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-            Column {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun FeaturedHomeCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    containerColor: Color,
-    contentColor: Color,
-    iconContainerColor: Color,
-    iconColor: Color,
-    tag: String,
-    onClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor,
-        ),
-        border = BorderStroke(1.dp, contentColor.copy(alpha = 0.2f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(110.dp)
-            .clickable { onClick() }
-            .testTag(tag),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(20.dp)
-                .fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(iconContainerColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-            Column {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = contentColor
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 13.sp,
-                    color = contentColor.copy(alpha = 0.8f),
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-
-// 2. SONGBOOK SCREEN
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun SongBookScreen(viewModel: WorshipViewModel) {
-    val songList by viewModel.songs.collectAsState()
-    var selectedCategory by remember { mutableStateOf(viewModel.songBookSelectedCategory) }
-
-    LaunchedEffect(selectedCategory) {
-        viewModel.songBookSelectedCategory = selectedCategory
-    }
-
-    val categories by viewModel.categories.collectAsState()
-    val categoriesWithAll = remember(categories) { listOf("Todas", "Favoritos") + categories }
-    val filteredSongs = remember(songList, selectedCategory) {
-        when (selectedCategory) {
-            "Todas" -> songList
-            "Favoritos" -> songList.filter { it.isFavorite }
-            else -> songList.filter { it.category == selectedCategory }
-        }
-    }
-
-    val listState = rememberLazyListState()
-    var isScrollRestored by remember { mutableStateOf(false) }
-
-    LaunchedEffect(filteredSongs) {
-        if (filteredSongs.isNotEmpty() && !isScrollRestored) {
-            if (viewModel.songBookScrollIndex < filteredSongs.size) {
-                listState.scrollToItem(viewModel.songBookScrollIndex, viewModel.songBookScrollOffset)
-            }
-            isScrollRestored = true
-        }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
-            .collect { (index, offset) ->
-                if (isScrollRestored) {
-                    viewModel.songBookScrollIndex = index
-                    viewModel.songBookScrollOffset = offset
-                }
-            }
-    }
 
     Scaffold(
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = { viewModel.navigateBack() },
-                    modifier = Modifier.testTag("btn_back")
-                ) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Cancionero",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
+            if (currentScreen != Screen.ModoPulpito) {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Secretaría Eclesiástica ",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp
+                            )
+                            Text(
+                                text = "- Boletín y Anuncios",
+                                color = Color(0xFFFFD700), // Dorado brillante
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 17.sp
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFF1E3A8A) // Azul Rey fijo
+                    )
                 )
             }
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.navigateTo(Screen.EditSong()) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.testTag("fab_add_song")
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Agregar Canción")
+        bottomBar = {
+            if (currentScreen != Screen.ModoPulpito) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    NavigationBarItem(
+                        selected = currentScreen == Screen.Boletin,
+                        onClick = { viewModel.navigateTo(Screen.Boletin) },
+                        icon = { Icon(Icons.Default.Book, contentDescription = "Boletín") },
+                        label = { Text("Boletín Semanal") },
+                        modifier = Modifier.testTag("nav_boletin")
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen == Screen.Cronograma,
+                        onClick = { viewModel.navigateTo(Screen.Cronograma) },
+                        icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Cronograma") },
+                        label = { Text("Cronograma") },
+                        modifier = Modifier.testTag("nav_cronograma")
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen == Screen.ModoPulpito,
+                        onClick = { viewModel.navigateTo(Screen.ModoPulpito) },
+                        icon = { Icon(Icons.Default.CoPresent, contentDescription = "Púlpito") },
+                        label = { Text("Modo Púlpito") },
+                        modifier = Modifier.testTag("nav_pulpito")
+                    )
+                }
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Horizontal scrollable categories
-            ScrollableTabRow(
-                selectedTabIndex = categoriesWithAll.indexOf(selectedCategory).coerceAtLeast(0),
-                edgePadding = 16.dp,
-                divider = {}
+            AnimatedContent(
+                targetState = currentScreen,
+                transitionSpec = {
+                    fadeIn() togetherWith fadeOut()
+                },
+                label = "ScreenTransition"
+            ) { screen ->
+                when (screen) {
+                    Screen.Boletin -> BoletinScreen(viewModel)
+                    Screen.Cronograma -> CronogramaScreen(viewModel)
+                    Screen.ModoPulpito -> PulpitoScreen(viewModel)
+                }
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// PANTALLA: BOLETÍN SEMANAL (ENTRADA DE DATOS)
+// -------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BoletinScreen(viewModel: WorshipViewModel) {
+    val bulletin by viewModel.bulletin.collectAsState()
+    val bulletinHistory by viewModel.bulletinHistory.collectAsState()
+    val context = LocalContext.current
+
+    var selectedDayIndex by remember { mutableStateOf(0) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Título de la pantalla y botón de Historial
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                categoriesWithAll.forEachIndexed { _, cat ->
-                    Tab(
-                        selected = selectedCategory == cat,
-                        onClick = { selectedCategory = cat },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (cat == "Favoritos") {
-                                    Icon(
-                                        imageVector = Icons.Default.Favorite,
-                                        contentDescription = null,
-                                        tint = if (selectedCategory == cat) Color.Red else Color.Gray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Boletín Semanal",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF1E3A8A)
+                )
+                
+                Button(
+                    onClick = { showHistoryDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.History, contentDescription = "Historial", tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Historial", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+
+        // 1. Datos Generales del Boletín (Rango de fecha y Comité) - Tarjeta Blanca con Sombra Suave
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFF1E3A8A)
+                        )
+                        Text(
+                            text = "Información General",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = Color(0xFF1E3A8A) // Azul Rey
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = bulletin.dateRange,
+                        onValueChange = { viewModel.updateDateRange(it) },
+                        label = { Text("Rango de Fechas") },
+                        placeholder = { Text("Ej: 20 al 26 de Julio") },
+                        leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("input_rango_fechas"),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = bulletin.committee,
+                        onValueChange = { viewModel.updateCommittee(it) },
+                        label = { Text("Comité / Grupo a Cargo") },
+                        placeholder = { Text("Ej: Comité de Damas") },
+                        leadingIcon = { Icon(Icons.Default.Group, contentDescription = null) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("input_comite_cargo"),
+                        singleLine = true
+                    )
+                }
+            }
+        }
+
+        // 2. Servicios y Asignaciones Diarias - Tarjeta Blanca con Sombra Suave
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = null,
+                            tint = Color(0xFF1E3A8A)
+                        )
+                        Text(
+                            text = "Servicios y Asignaciones Diarias",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = Color(0xFF1E3A8A)
+                        )
+                    }
+
+                    // Selector de días con scroll lateral
+                    ScrollableTabRow(
+                        selectedTabIndex = selectedDayIndex,
+                        edgePadding = 0.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp)),
+                        containerColor = Color(0xFFF1F5F9), // Muy claro
+                        contentColor = Color(0xFF1E3A8A)
+                    ) {
+                        bulletin.days.forEachIndexed { index, day ->
+                            Tab(
+                                selected = selectedDayIndex == index,
+                                onClick = { selectedDayIndex = index },
+                                text = { 
+                                    Text(
+                                        text = day.dayName, 
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selectedDayIndex == index) Color(0xFFCA8A04) else Color(0xFF1E293B)
+                                    ) 
                                 }
-                                Text(cat, fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    val day = bulletin.days[selectedDayIndex]
+
+                    // Información del día seleccionado
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFEFF6FF), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Asignación: ${day.dayName}",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF1E3A8A)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.EditCalendar,
+                            contentDescription = null,
+                            tint = Color(0xFFCA8A04) // Accent Gold
+                        )
+                    }
+
+                    // Campos de Entrada para el Día Seleccionado
+                    // 1. Culto / Servicio
+                    OutlinedTextField(
+                        value = day.serviceName,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "serviceName", it) },
+                        label = { Text("Culto / Servicio") },
+                        placeholder = { Text("Ej: Culto de Adoración") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    // 2. Hora
+                    OutlinedTextField(
+                        value = day.time,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "time", it) },
+                        label = { Text("Hora") },
+                        placeholder = { Text("Ej: 19:30") },
+                        leadingIcon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    // 3. Alabanza
+                    OutlinedTextField(
+                        value = day.worshipTeam,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "worshipTeam", it) },
+                        label = { Text("Alabanza") },
+                        placeholder = { Text("Ej: Grupo Eben-Ezer") },
+                        leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    // 4. Ujieres
+                    OutlinedTextField(
+                        value = day.ushers,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "ushers", it) },
+                        label = { Text("Ujieres") },
+                        placeholder = { Text("Ej: Hno. Juan y Hna. Rosa") },
+                        leadingIcon = { Icon(Icons.Default.VolunteerActivism, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    // 5. Uniforme de Ujieres (con ícono representativo de gancho/ropa) inmediatamente después de Ujieres
+                    OutlinedTextField(
+                        value = day.notesUniform,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "notesUniform", it) },
+                        label = { Text("Uniforme de Ujieres") },
+                        placeholder = { Text("Ej: Uniforme Oficial Azul / Traje Oscuro") },
+                        leadingIcon = { Icon(Icons.Default.Checkroom, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    // 6. DECOM (Multimedia)
+                    OutlinedTextField(
+                        value = day.decom,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "decom", it) },
+                        label = { Text("DECOM (Multimedia)") },
+                        placeholder = { Text("Ej: Hno. Mateo") },
+                        leadingIcon = { Icon(Icons.Default.Tv, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    // 7. Sonido
+                    OutlinedTextField(
+                        value = day.sound,
+                        onValueChange = { viewModel.updateDayField(selectedDayIndex, "sound", it) },
+                        label = { Text("Sonido") },
+                        placeholder = { Text("Ej: Hno. Marcos") },
+                        leadingIcon = { Icon(Icons.Default.SettingsVoice, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            }
+        }
+
+        // 3. Anuncios Generales y Avisos - Tarjeta Blanca con Sombra Suave
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = null,
+                            tint = Color(0xFF1E3A8A)
+                        )
+                        Text(
+                            text = "Anuncios Generales y Avisos",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = Color(0xFF1E3A8A)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = bulletin.generalAnnouncements,
+                        onValueChange = { viewModel.updateGeneralAnnouncements(it) },
+                        placeholder = { Text("Ingresa los anuncios importantes de la semana aquí...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .testTag("input_anuncios"),
+                        maxLines = 10
+                    )
+                }
+            }
+        }
+
+        // Botones de Acción (Guardar Cambios Destacado, Exportar PDF, Compartir Whatsapp)
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // BOTÓN DORADO DESTACADO: GUARDAR CAMBIOS DE LA SEMANA
+                Button(
+                    onClick = {
+                        viewModel.saveCurrentToHistory()
+                        Toast.makeText(context, "¡Boletín semanal guardado con éxito!", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("btn_guardar_boletin"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFCA8A04), // Dorado / Oro
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Guardar Cambios de la Semana", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 16.sp)
+                }
+
+                // Generar PDF
+                Button(
+                    onClick = { printPdf(context, bulletin) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("btn_generar_pdf"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)), // Azul Rey
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Generar PDF en 1 Hoja", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // Compartir Whatsapp
+                Button(
+                    onClick = { shareOnWhatsApp(context, bulletin) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("btn_compartir_whatsapp"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Compartir en WhatsApp (Copiar y Enviar)", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+    }
+
+    // Modal del Historial de Boletines
+    if (showHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showHistoryDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Historial",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E3A8A),
+                        fontSize = 18.sp
+                    )
+                    
+                    Button(
+                        onClick = {
+                            viewModel.createNewBulletin()
+                            showHistoryDialog = false
+                            Toast.makeText(context, "Nuevo boletín semanal iniciado", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCA8A04)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Nuevo", tint = Color.White, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Nuevo", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Selecciona un boletín guardado para cargarlo en el editor principal:",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp)
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                            .padding(4.dp)
+                    ) {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (bulletinHistory.isEmpty()) {
+                                item {
+                                    Text(
+                                        text = "No hay boletines guardados en el historial.",
+                                        color = Color.Gray,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(12.dp)
+                                    )
+                                }
+                            } else {
+                                items(bulletinHistory) { b ->
+                                    val isCurrent = bulletin.id == b.id
+                                    val cardBg = if (isCurrent) Color(0xFFEFF6FF) else Color(0xFFF8FAFC)
+                                    val cardBorder = if (isCurrent) Color(0xFF1E3A8A) else Color(0xFFE2E8F0)
+                                    
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(cardBg)
+                                            .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                viewModel.loadBulletinFromHistory(b)
+                                                showHistoryDialog = false
+                                                Toast.makeText(context, "Cargado: ${b.dateRange}", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = b.dateRange.ifBlank { "Semana sin fecha" },
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = if (isCurrent) Color(0xFF1E3A8A) else Color(0xFF1E293B)
+                                            )
+                                            if (b.committee.isNotBlank()) {
+                                                Text(
+                                                    text = "Comité: ${b.committee}",
+                                                    fontSize = 11.sp,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                        }
+                                        
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (isCurrent) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = "Activo",
+                                                    tint = Color(0xFF10B981),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.deleteBulletinFromHistory(b.id)
+                                                    Toast.makeText(context, "Boletín eliminado", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Eliminar",
+                                                    tint = Color.Red.copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHistoryDialog = false }) {
+                    Text("Cerrar", color = Color(0xFF1E3A8A), fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+}
+
+// -------------------------------------------------------------
+// PANTALLA: CRONOGRAMA ANUAL
+// -------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CronogramaScreen(viewModel: WorshipViewModel) {
+    val scheduleList by viewModel.scheduleList.collectAsState()
+    val committees by viewModel.committees.collectAsState()
+    val context = LocalContext.current
+
+    var showDialog by remember { mutableStateOf(false) }
+    var showManageCommitteesDialog by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<AnnualScheduleItem?>(null) }
+
+    val months = listOf(
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    )
+    val currentMonthIndex = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH)
+    var selectedMonthIndex by remember { mutableStateOf(currentMonthIndex) }
+
+    var dateState by remember { mutableStateOf("") }
+    var committeeState by remember { mutableStateOf("") }
+    var descriptionState by remember { mutableStateOf("") }
+    var monthState by remember { mutableStateOf(months[currentMonthIndex]) }
+
+    var searchQuery by remember { mutableStateOf("") }
+    val committeeFilters = listOf("Todos") + committees
+    var selectedFilterCommittee by remember { mutableStateOf("Todos") }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val jsonStr = viewModel.exportBackup()
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(jsonStr.toByteArray())
+                }
+                Toast.makeText(context, "¡Respaldo exportado con éxito!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al exportar: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val bytes = input.readBytes()
+                    val jsonStr = String(bytes)
+                    val success = viewModel.importBackup(jsonStr)
+                    if (success) {
+                        Toast.makeText(context, "¡Copia de seguridad restaurada con éxito!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "El archivo de respaldo no es válido", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al importar: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun getMonthOfItem(item: AnnualScheduleItem, default: String): String {
+        if (item.month.isNotBlank()) return item.month
+        val found = months.firstOrNull { item.date.contains(it, ignoreCase = true) }
+        return found ?: default
+    }
+
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    editingItem = null
+                    monthState = months[selectedMonthIndex]
+                    dateState = ""
+                    committeeState = ""
+                    descriptionState = ""
+                    showDialog = true
+                },
+                containerColor = Color(0xFFCA8A04), // Dorado
+                contentColor = Color.White,
+                modifier = Modifier.testTag("fab_add_schedule")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Agregar Fecha", tint = Color.White)
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(Color(0xFFF8FAFC)) // Fondo slate sutil
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cronograma Anual",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF1E3A8A)
+                )
+                
+                // Botón de Copia de Seguridad
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            val jsonStr = viewModel.exportBackup()
+                            exportLauncher.launch("respaldo_boletin_iglesia.json")
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color(0xFF1E3A8A).copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Upload,
+                            contentDescription = "Exportar Copia de Seguridad",
+                            tint = Color(0xFF1E3A8A),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    
+                    IconButton(
+                        onClick = {
+                            importLauncher.launch(arrayOf("application/json", "*/*"))
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color(0xFFCA8A04).copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Importar Copia de Seguridad",
+                            tint = Color(0xFFCA8A04),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            // 1. Selector de Meses (Barra horizontal deslizable con fondo Azul Rey para seleccionado)
+            Text(
+                text = "Seleccionar Mes:",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF64748B),
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                items(months.size) { index ->
+                    val monthName = months[index]
+                    val isSelected = selectedMonthIndex == index
+                    val backgroundColor = if (isSelected) Color(0xFF1E3A8A) else Color(0xFFE2E8F0)
+                    val contentColor = if (isSelected) Color.White else Color(0xFF334155)
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(backgroundColor)
+                            .clickable { selectedMonthIndex = index }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = monthName,
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = contentColor
+                        )
+                    }
+                }
+            }
+
+            // 3. Filtro por Comité y Campo de Búsqueda
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Buscar evento o comité...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Limpiar", tint = Color.Gray)
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF1E3A8A),
+                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                )
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(committeeFilters.size) { idx ->
+                        val filterName = committeeFilters[idx]
+                        val isSelected = selectedFilterCommittee == filterName
+                        val chipBg = if (isSelected) Color(0xFFCA8A04) else Color(0xFFF1F5F9) // Dorado o slate 100
+                        val chipText = if (isSelected) Color.White else Color(0xFF475569)
+                        val chipBorder = if (isSelected) Color.Transparent else Color(0xFFE2E8F0)
+
+                        Box(
+                            modifier = Modifier
+                                .border(1.dp, chipBorder, RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(chipBg)
+                                .clickable { selectedFilterCommittee = filterName }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = filterName,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = chipText
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(
+                    onClick = { showManageCommitteesDialog = true },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .background(Color(0xFF1E3A8A), RoundedCornerShape(8.dp))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Gestionar Comités",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            if (filteredSongs.isEmpty()) {
+            // Filter the schedule list
+            val currentSelectedMonthName = months[selectedMonthIndex]
+            val filteredList = scheduleList.filter { item ->
+                val matchesMonth = getMonthOfItem(item, currentSelectedMonthName).equals(currentSelectedMonthName, ignoreCase = true)
+                val matchesSearchText = searchQuery.isBlank() ||
+                        item.committee.contains(searchQuery, ignoreCase = true) ||
+                        item.description.contains(searchQuery, ignoreCase = true) ||
+                        item.date.contains(searchQuery, ignoreCase = true)
+                val matchesCommitteeChip = selectedFilterCommittee == "Todos" ||
+                        item.committee.contains(selectedFilterCommittee, ignoreCase = true)
+
+                matchesMonth && matchesSearchText && matchesCommitteeChip
+            }
+
+            // 2. Lista de Eventos por Mes (Tarjetas elegantes con fondo blanco y sombra suave)
+            if (filteredList.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -734,2719 +943,1179 @@ fun SongBookScreen(viewModel: WorshipViewModel) {
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MusicNote,
+                            imageVector = Icons.Default.EventBusy,
                             contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = Color.Gray
+                            modifier = Modifier.size(72.dp),
+                            tint = Color.Gray.copy(alpha = 0.5f)
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "No hay canciones en esta categoría.",
+                            text = "No hay eventos registrados en $currentSelectedMonthName.",
                             color = Color.Gray,
-                            fontSize = 16.sp
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
                         )
+                        if (selectedFilterCommittee != "Todos" || searchQuery.isNotBlank()) {
+                            Text(
+                                text = "Intenta cambiar los filtros de búsqueda.",
+                                color = Color.Gray.copy(alpha = 0.8f),
+                                fontSize = 13.sp
+                            )
+                        } else {
+                            Text(
+                                text = "Toca el botón dorado + para agregar un evento.",
+                                color = Color.Gray.copy(alpha = 0.8f),
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             } else {
                 LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f)
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredSongs, key = { it.id }) { song ->
-                        SongRowItem(song = song, onClick = {
-                            viewModel.navigateTo(Screen.SongDetail(song.id))
-                        }, onFavoriteToggle = {
-                            viewModel.toggleFavorite(song)
-                        })
+                    items(filteredList) { item ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        // Fecha exacta o rango de días
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CalendarToday,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = Color(0xFFCA8A04) // Dorado
+                                            )
+                                            Text(
+                                                text = item.date,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF1E3A8A) // Azul Rey
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        // Nombre del Comité o Evento
+                                        Text(
+                                            text = item.committee,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF1E293B) // Dark Slate
+                                        )
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        // Descripción / Observaciones
+                                        Text(
+                                            text = item.description,
+                                            fontSize = 14.sp,
+                                            color = Color(0xFF64748B) // Slate 500
+                                        )
+                                    }
+
+                                    // Badge / Etiqueta Coloreada según tipo
+                                    val badgeText = when {
+                                        item.description.contains("ayuno", ignoreCase = true) || item.committee.contains("ayuno", ignoreCase = true) -> "Ayuno"
+                                        item.description.contains("especial", ignoreCase = true) || item.committee.contains("especial", ignoreCase = true) -> "Especial"
+                                        item.description.contains("reunión", ignoreCase = true) || item.committee.contains("reunion", ignoreCase = true) -> "Reunión"
+                                        item.description.contains("vigilia", ignoreCase = true) || item.committee.contains("vigilia", ignoreCase = true) -> "Vigilia"
+                                        item.description.contains("culto", ignoreCase = true) || item.committee.contains("culto", ignoreCase = true) -> "Culto"
+                                        else -> "Actividad"
+                                    }
+                                    val badgeColor = when (badgeText) {
+                                        "Ayuno" -> Color(0xFF8B5CF6) // Morado
+                                        "Especial" -> Color(0xFFD97706) // Oro/Dorado
+                                        "Reunión" -> Color(0xFF0D9488) // Teal
+                                        "Vigilia" -> Color(0xFF4F46E5) // Indigo
+                                        "Culto" -> Color(0xFF1E3A8A) // Azul Rey
+                                        else -> Color(0xFF3B82F6) // Azul claro
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(badgeColor.copy(alpha = 0.15f))
+                                            .border(1.dp, badgeColor, RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = badgeText,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = badgeColor
+                                        )
+                                    }
+                                }
+
+                                Divider(
+                                    modifier = Modifier.padding(vertical = 12.dp),
+                                    color = Color(0xFFF1F5F9)
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            editingItem = item
+                                            monthState = getMonthOfItem(item, currentSelectedMonthName)
+                                            dateState = item.date
+                                            committeeState = item.committee
+                                            descriptionState = item.description
+                                            showDialog = true
+                                        },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF1E3A8A))
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Editar", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    TextButton(
+                                        onClick = { viewModel.deleteScheduleItem(item.id) },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFEF4444))
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Eliminar", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
 
-@Composable
-fun SongRowItem(song: Song, onClick: () -> Unit, onFavoriteToggle: () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .testTag("song_item_${song.id}")
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+    if (showDialog) {
+        var monthDropdownExpanded by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = {
                 Text(
-                    text = song.title,
+                    text = if (editingItem == null) "Agregar Evento al Cronograma" else "Editar Evento",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = Color(0xFF1E3A8A)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(song.category, fontSize = 10.sp) },
-                        modifier = Modifier.height(24.dp)
-                    )
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text("Tono: ${song.key}", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                        modifier = Modifier.height(24.dp)
-                    )
-                }
-            }
-
-            IconButton(onClick = onFavoriteToggle) {
-                Icon(
-                    imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = "Favorito",
-                    tint = if (song.isFavorite) Color.Red else Color.Gray
-                )
-            }
-        }
-    }
-}
-
-
-// 3. SONG DETAIL SCREEN
-@Composable
-fun SongDetailScreen(viewModel: WorshipViewModel, songId: Long) {
-    val songList by viewModel.songs.collectAsState()
-    val song = remember(songList, songId) { songList.find { it.id == songId } }
-    val context = LocalContext.current
-
-    var showChords by remember { mutableStateOf(viewModel.showChordsByDefault) }
-    var currentFontSize by remember { mutableStateOf(16f) }
-
-    if (song == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Canción no encontrada")
-        }
-        return
-    }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.navigateBack() }) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Detalle de Canción",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Row {
-                    IconButton(onClick = { viewModel.toggleFavorite(song) }) {
-                        Icon(
-                            imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Favorito",
-                            tint = if (song.isFavorite) Color.Red else Color.Gray
-                        )
-                    }
-                    IconButton(onClick = { viewModel.navigateTo(Screen.EditSong(song.id)) }) {
-                        Icon(imageVector = Icons.Default.Edit, contentDescription = "Editar")
-                    }
-                }
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp)
-        ) {
-            // Header stats
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = song.title,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text(song.category) }
-                        )
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text("Tono: ${song.key}", fontWeight = FontWeight.Bold) }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Notes if any
-            if (song.notes.isNotEmpty()) {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)),
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Notas: ${song.notes}",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Quick Actions Scroll
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = { viewModel.navigateTo(Screen.WorshipMode(song.id)) },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .testTag("btn_pantalla_completa")
-                ) {
-                    Icon(imageVector = Icons.Default.Fullscreen, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Pantalla Completa")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        val shareText = """
-                            *${song.title}* (${song.category}) - Tono: ${song.key}
-                            
-                            ${song.lyrics.replace(Regex("\\[.*?\\]"), "")}
-                            
-                            Enviado desde Cancionero de Alabanza
-                        """.trimIndent()
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, shareText)
-                            type = "text/plain"
+                    // Selector de Mes (ExposedDropdownMenuBox)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        ExposedDropdownMenuBox(
+                            expanded = monthDropdownExpanded,
+                            onExpandedChange = { monthDropdownExpanded = !monthDropdownExpanded }
+                        ) {
+                            OutlinedTextField(
+                                value = monthState,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Mes") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthDropdownExpanded) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            ExposedDropdownMenu(
+                                expanded = monthDropdownExpanded,
+                                onDismissRequest = { monthDropdownExpanded = false }
+                            ) {
+                                months.forEach { m ->
+                                    DropdownMenuItem(
+                                        text = { Text(m) },
+                                        onClick = {
+                                            monthState = m
+                                            monthDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
                         }
-                        val shareIntent = Intent.createChooser(sendIntent, "Compartir Canción")
-                        context.startActivity(shareIntent)
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Share, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Compartir")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Controls & Header row for the lyrics section
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Letra & Acordes",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                // Interactive Chords Toggle & Font Size controls
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    IconButton(
-                        onClick = { currentFontSize = (currentFontSize - 2f).coerceAtLeast(12f) },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Remove,
-                            contentDescription = "Reducir letra",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
                     }
 
-                    Text(
-                        text = "${currentFontSize.toInt()}sp",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                    // Fecha exacta o rango de días
+                    OutlinedTextField(
+                        value = dateState,
+                        onValueChange = { dateState = it },
+                        label = { Text("Fecha o Rango de Días") },
+                        placeholder = { Text("Ej: 15 de Agosto / Semana del 10 al 16") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp)
                     )
 
-                    IconButton(
-                        onClick = { currentFontSize = (currentFontSize + 2f).coerceAtMost(28f) },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Aumentar letra",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    IconButton(
-                        onClick = { showChords = !showChords },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .testTag("btn_toggle_chords_detail")
-                    ) {
-                        Icon(
-                            imageVector = if (showChords) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = "Mostrar/Ocultar Acordes",
-                            tint = if (showChords) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Lyrics Box - with a beautiful bordered card that scrolls smoothly
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    val lines = song.lyrics.split("\n")
-                    items(lines) { line ->
-                        LyricLineView(line = line, showChords = showChords, fontSize = currentFontSize)
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// 4. EDIT / CREATE SONG SCREEN
-@Composable
-fun EditSongScreen(viewModel: WorshipViewModel, songId: Long?) {
-    val songList by viewModel.songs.collectAsState()
-    val existingSong = remember(songList, songId) { songList.find { it.id == songId } }
-
-    val categories by viewModel.categories.collectAsState()
-
-    var title by remember { mutableStateOf(existingSong?.title ?: "") }
-    var category by remember { mutableStateOf(existingSong?.category ?: "Coros") }
-    var key by remember { mutableStateOf(existingSong?.key ?: "C") }
-    var lyrics by remember { mutableStateOf(existingSong?.lyrics ?: "") }
-    var notes by remember { mutableStateOf(existingSong?.notes ?: "") }
-
-    var categoryExpanded by remember { mutableStateOf(false) }
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
-    var newCategoryName by remember { mutableStateOf("") }
-
-    if (showAddCategoryDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text("Nueva Categoría") },
-            text = {
-                Column {
-                    Text("Ingresa el nombre de la nueva categoría:")
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Comité a cargo
                     OutlinedTextField(
-                        value = newCategoryName,
-                        onValueChange = { newCategoryName = it },
+                        value = committeeState,
+                        onValueChange = { committeeState = it },
+                        label = { Text("Comité / Grupo") },
+                        placeholder = { Text("Ej: Jóvenes / Damas / Escuela Dominical") },
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
+                    // Observaciones
+                    OutlinedTextField(
+                        value = descriptionState,
+                        onValueChange = { descriptionState = it },
+                        label = { Text("Observaciones / Actividad") },
+                        placeholder = { Text("Ej: Culto Especial de Jóvenes") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp)
                     )
                 }
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
-                        val cleaned = newCategoryName.trim()
-                        if (cleaned.isNotEmpty()) {
-                            viewModel.addCategory(cleaned)
-                            category = cleaned
+                        if (dateState.isNotBlank() && committeeState.isNotBlank()) {
+                            if (editingItem == null) {
+                                viewModel.addScheduleItem(dateState, committeeState, descriptionState, monthState)
+                            } else {
+                                viewModel.updateScheduleItem(
+                                    editingItem!!.id,
+                                    dateState,
+                                    committeeState,
+                                    descriptionState,
+                                    monthState
+                                )
+                            }
+                            showDialog = false
                         }
-                        showAddCategoryDialog = false
                     },
-                    enabled = newCategoryName.trim().isNotEmpty()
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Agregar")
+                    Text("Guardar", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text("Cancelar")
+                TextButton(
+                    onClick = { showDialog = false }
+                ) {
+                    Text("Cancelar", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
                 }
             }
         )
     }
 
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.navigateBack() }) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Cancelar")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (songId == null) "Nueva Canción" else "Editar Canción",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (existingSong != null) {
-                        var showDeleteConfirm by remember { mutableStateOf(false) }
-                        IconButton(onClick = { showDeleteConfirm = true }) {
-                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.Red)
-                        }
-
-                        if (showDeleteConfirm) {
-                            AlertDialog(
-                                onDismissRequest = { showDeleteConfirm = false },
-                                title = { Text("Eliminar Canción") },
-                                text = { Text("¿Estás seguro de que quieres eliminar '${existingSong.title}'?") },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        viewModel.deleteSong(existingSong)
-                                        showDeleteConfirm = false
-                                    }) {
-                                        Text("Eliminar", color = Color.Red)
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showDeleteConfirm = false }) {
-                                        Text("Cancelar")
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            if (title.trim().isNotEmpty() && lyrics.trim().isNotEmpty()) {
-                                val song = Song(
-                                    id = existingSong?.id ?: 0L,
-                                    title = title,
-                                    category = category,
-                                    key = key,
-                                    lyrics = lyrics,
-                                    notes = notes,
-                                    isFavorite = existingSong?.isFavorite ?: false,
-                                    dateCreated = existingSong?.dateCreated ?: System.currentTimeMillis()
-                                )
-                                viewModel.saveSong(song) {
-                                    viewModel.navigateBack()
-                                }
-                            }
-                        },
-                        enabled = title.trim().isNotEmpty() && lyrics.trim().isNotEmpty(),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("btn_save_song")
-                    ) {
-                        Text("Guardar")
-                    }
-                }
-            }
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
-        ) {
-            item {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Título de la canción") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_title")
+    if (showManageCommitteesDialog) {
+        var newCommitteeName by remember { mutableStateOf("") }
+        
+        AlertDialog(
+            onDismissRequest = { showManageCommitteesDialog = false },
+            title = {
+                Text(
+                    text = "Gestionar Comités",
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E3A8A)
                 )
-            }
-
-            item {
-                Row(
+            },
+            text = {
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Agrega o elimina los comités de la lista de filtros del cronograma.",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         OutlinedTextField(
-                            value = category,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Categoría") },
-                            trailingIcon = {
-                                IconButton(onClick = { categoryExpanded = true }) {
-                                    Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null)
+                            value = newCommitteeName,
+                            onValueChange = { newCommitteeName = it },
+                            placeholder = { Text("Nombre del comité") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF1E3A8A),
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            )
+                        )
+                        
+                        Button(
+                            onClick = {
+                                if (newCommitteeName.isNotBlank()) {
+                                    viewModel.addCommittee(newCommitteeName)
+                                    newCommitteeName = ""
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        DropdownMenu(
-                            expanded = categoryExpanded,
-                            onDismissRequest = { categoryExpanded = false }
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCA8A04)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
-                            categories.forEach { cat ->
-                                DropdownMenuItem(
-                                    text = { Text(cat) },
-                                    onClick = {
-                                        category = cat
-                                        categoryExpanded = false
-                                    }
-                                )
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("+ Agregar categoría...", color = MaterialTheme.colorScheme.primary) },
-                                onClick = {
-                                    newCategoryName = ""
-                                    showAddCategoryDialog = true
-                                    categoryExpanded = false
-                                }
-                            )
+                            Text("Añadir", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
-
-                    OutlinedTextField(
-                        value = key,
-                        onValueChange = { key = it },
-                        label = { Text("Tono") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(0.5f)
-                            .testTag("input_key")
+                    
+                    Spacer(modifier = Modifier.height(6.dp))
+                    
+                    Text(
+                        text = "Comités Existentes:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Color(0xFF1E293B)
                     )
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 180.dp)
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                            .padding(4.dp)
+                    ) {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (committees.isEmpty()) {
+                                item {
+                                    Text(
+                                        text = "No hay comités personalizados cargados.",
+                                        color = Color.Gray,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                            } else {
+                                items(committees) { comm ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFFF1F5F9))
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = comm,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF334155)
+                                        )
+                                        
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.deleteCommittee(comm)
+                                                if (selectedFilterCommittee == comm) {
+                                                    selectedFilterCommittee = "Todos"
+                                                }
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Eliminar",
+                                                tint = Color.Red.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showManageCommitteesDialog = false }) {
+                    Text("Cerrar", color = Color(0xFF1E3A8A), fontWeight = FontWeight.Bold)
                 }
             }
-
-            item {
-                OutlinedTextField(
-                    value = lyrics,
-                    onValueChange = { lyrics = it },
-                    label = { Text("Letra de la canción") },
-                    placeholder = { Text("Ej:\n[G]Jehová es mi [C]pastor\n[D]nada me fal[G]tará...") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp)
-                        .testTag("input_lyrics")
-                )
-            }
-
-            item {
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Notas o apuntes para el grupo") },
-                    placeholder = { Text("Ej: Subir intensidad en el puente") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp)
-                )
-            }
-        }
+        )
     }
 }
 
-
-// 5. WORSHIP MODE SCREEN (MODO DE CANTO)
+// -------------------------------------------------------------
+// PANTALLA: MODO PÚLPITO / EXPOSICIÓN (LECTURA)
+// -------------------------------------------------------------
 @Composable
-fun WorshipModeScreen(
-    viewModel: WorshipViewModel,
-    songId: Long,
-    mosaicId: Long?,
-    mosaicSongIndex: Int
-) {
+fun PulpitoScreen(viewModel: WorshipViewModel) {
+    val bulletin by viewModel.bulletin.collectAsState()
+    val scheduleList by viewModel.scheduleList.collectAsState()
     val context = LocalContext.current
-    val songList by viewModel.songs.collectAsState()
-    val song = remember(songList, songId) { songList.find { it.id == songId } }
 
-    var showChords by remember { mutableStateOf(viewModel.showChordsByDefault) }
-    var currentFontSize by remember { mutableStateOf(viewModel.worshipFontSize) }
-    val isSessionActive by viewModel.isSessionActive.collectAsState()
-
-    // Floating Leader menu control toggle
-    var showLeaderMenu by remember { mutableStateOf(false) }
-
-    // Keep screen awake side-effect
-    DisposableEffect(viewModel.keepScreenAwake) {
+    // Mantener la pantalla encendida usando DisposableEffect nativo de Android
+    DisposableEffect(Unit) {
         val activity = context as? Activity
-        if (viewModel.keepScreenAwake) {
-            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
-    if (song == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Cargando canción...")
+    var textScale by remember { mutableStateOf(16f) } // El tamaño base por defecto ajustado para la tabla
+    val royalBlueDark = Color(0xFF1E3A8A)
+    val goldAccent = Color(0xFFCA8A04)
+
+    var activeTab by remember { mutableStateOf(0) } // 0: Boletín Semanal, 1: Cronograma Anual
+
+    val months = remember {
+        listOf(
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        )
+    }
+    val currentMonthIndex = remember { java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) }
+
+    val upcomingEvents = remember(scheduleList, currentMonthIndex) {
+        fun getMonthIndexOfItem(item: AnnualScheduleItem): Int {
+            val monthName = if (item.month.isNotBlank()) {
+                item.month
+            } else {
+                months.firstOrNull { item.date.contains(it, ignoreCase = true) } ?: ""
+            }
+            val index = months.indexOfFirst { it.equals(monthName, ignoreCase = true) }
+            return if (index == -1) currentMonthIndex else index
         }
-        return
+
+        scheduleList.filter { item ->
+            getMonthIndexOfItem(item) >= currentMonthIndex
+        }.sortedWith(compareBy({ getMonthIndexOfItem(it) }, { it.date }))
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black) // Pure Black
+            .background(Color(0xFF0F172A)) // Fondo oscuro elegante (Navy/Slate)
+            .padding(16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-        ) {
-            // Screen Header in Black screen
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.navigateBack() }) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = song.title,
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "Tono: ${song.key} • ${song.category}",
-                            color = Color.LightGray,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Font adjustment buttons
-                    IconButton(onClick = {
-                        currentFontSize = (currentFontSize - 2f).coerceAtLeast(14f)
-                        viewModel.updateWorshipFontSize(currentFontSize)
-                    }) {
-                        Text("A-", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                    IconButton(onClick = {
-                        currentFontSize = (currentFontSize + 2f).coerceAtMost(50f)
-                        viewModel.updateWorshipFontSize(currentFontSize)
-                    }) {
-                        Text("A+", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-
-                    // Chord display toggle button
-                    IconButton(onClick = { showChords = !showChords }) {
-                        Icon(
-                            imageVector = if (showChords) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = "Ver Acordes",
-                            tint = Color.White
-                        )
-                    }
-                }
-            }
-
-            Divider(color = Color.DarkGray)
-
-            // Lyrics Box
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 24.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 16.dp)
-                ) {
-                    val lines = song.lyrics.split("\n")
-                    items(lines) { line ->
-                        LyricLineView(line = line, showChords = showChords, fontSize = currentFontSize)
-                    }
-                }
-            }
-
-            // Mosaic bottom navigation if any
-            if (mosaicId != null) {
-                val mosaicList by viewModel.mosaics.collectAsState()
-                val activeMosaic = remember(mosaicList, mosaicId) { mosaicList.find { it.id == mosaicId } }
-                if (activeMosaic != null) {
-                    val songIds = remember(activeMosaic) {
-                        activeMosaic.songIds.split(",").mapNotNull { it.toLongOrNull() }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF121212))
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            enabled = mosaicSongIndex > 0,
-                            onClick = {
-                                val prevIndex = mosaicSongIndex - 1
-                                val prevSongId = songIds[prevIndex]
-                                viewModel.navigateTo(
-                                    Screen.WorshipMode(prevSongId, mosaicId, prevIndex),
-                                    addToBackStack = false
-                                )
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronLeft,
-                                contentDescription = "Anterior",
-                                tint = if (mosaicSongIndex > 0) Color.White else Color.DarkGray
-                            )
-                        }
-
-                        Text(
-                            text = "${mosaicSongIndex + 1} de ${songIds.size} • Mosaico: ${activeMosaic.name}",
-                            color = Color.LightGray,
-                            fontSize = 14.sp
-                        )
-
-                        IconButton(
-                            enabled = mosaicSongIndex < songIds.size - 1,
-                            onClick = {
-                                val nextIndex = mosaicSongIndex + 1
-                                val nextSongId = songIds[nextIndex]
-                                viewModel.navigateTo(
-                                    Screen.WorshipMode(nextSongId, mosaicId, nextIndex),
-                                    addToBackStack = false
-                                )
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = "Siguiente",
-                                tint = if (mosaicSongIndex < songIds.size - 1) Color.White else Color.DarkGray
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Floating Leader Control Menu Button (Only visible if Live Session is active/running on leader device!)
-        if (isSessionActive) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                FloatingActionButton(
-                    onClick = { showLeaderMenu = !showLeaderMenu },
-                    containerColor = Color(0xFFFF9800),
-                    contentColor = Color.White,
-                    modifier = Modifier.testTag("btn_floating_leader_bar")
-                ) {
-                    Icon(
-                        imageVector = if (showLeaderMenu) Icons.Default.Close else Icons.Default.Campaign,
-                        contentDescription = "Comandos de Director"
-                    )
-                }
-            }
-        }
-
-        // Expanding Leader Floating Control Overlay
-        if (showLeaderMenu && isSessionActive) {
-            Dialog(onDismissRequest = { showLeaderMenu = false }) {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(20.dp)
-                    ) {
-                        Text(
-                            text = "👑 Comandos del Director",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 18.sp
-                        )
-                        Text(
-                            text = "Presiona para enviar un mensaje instantáneo al equipo",
-                            color = Color.LightGray,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Actions Grid
-                        val commands = listOf(
-                            "🔵 REPETIMOS CORO", "Estrofa 1", "Estrofa 2",
-                            "Estrofa 3", "Puente", "Coro", "Final",
-                            "🟢 SOLO PIANO", "SOLO GUITARRA", "🟡 TODA LA BANDA",
-                            "Esperar", "Improvisar", "🔴 TERMINAMOS"
-                        )
-
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.height(300.dp)
-                        ) {
-                            items(commands) { cmd ->
-                                Button(
-                                    onClick = {
-                                        viewModel.broadcastOverlayCommand(cmd)
-                                        showLeaderMenu = false
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = when {
-                                            cmd.contains("REPETIMOS") || cmd.contains("Coro") -> Color(0xFF1565C0)
-                                            cmd.contains("SOLO") -> Color(0xFF2E7D32)
-                                            cmd.contains("BANDA") -> Color(0xFFEF6C00)
-                                            cmd.contains("TERMINAMOS") || cmd.contains("Final") -> Color(0xFFC62828)
-                                            else -> Color(0xFF37474F)
-                                        }
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.height(44.dp)
-                                ) {
-                                    Text(cmd, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { showLeaderMenu = false },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Cerrar")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun LyricLineView(line: String, showChords: Boolean, fontSize: Float) {
-    if (showChords) {
-        val parsed = remember(line) { parseChordLine(line) }
-        if (parsed != null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Render Chords in beautiful glowing Gold
-                Text(
-                    text = parsed.first,
-                    fontSize = (fontSize * 0.82f).sp, // slightly smaller than text but easily visible
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFFFFD23F), // Warm glowing gold
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                // Render text line in monospace for pixel-perfect vertical alignment under the chords
-                Text(
-                    text = parsed.second,
-                    fontSize = fontSize.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.5.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            return
-        }
-    }
-
-    // Default clean text rendering (chords stripped)
-    val cleanLine = remember(line) { line.replace(Regex("\\[.*?\\]"), "") }
-    val isChorusHeader = cleanLine.startsWith("Coro:") || cleanLine.startsWith("Estrofa") || cleanLine.startsWith("Puente")
-    
-    Text(
-        text = cleanLine,
-        fontSize = fontSize.sp,
-        color = if (isChorusHeader) Color(0xFFFF9800) else Color.White.copy(alpha = 0.9f),
-        fontWeight = if (isChorusHeader) FontWeight.Bold else FontWeight.Normal,
-        textAlign = TextAlign.Center,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = if (isChorusHeader) 10.dp else 4.dp)
-    )
-}
-
-
-// 6. MOSAIC LIST SCREEN
-@Composable
-fun MosaicsScreen(viewModel: WorshipViewModel) {
-    val mosaicList by viewModel.mosaics.collectAsState()
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Mosaicos",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.navigateTo(Screen.CreateMosaic()) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.testTag("fab_add_mosaic")
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Crear Mosaico")
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (mosaicList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                        Icon(imageVector = Icons.Default.QueueMusic, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("No tienes mosaicos creados.", color = Color.Gray)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Crea listas ordenadas de canciones para usarlas durante el servicio.", fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    items(mosaicList) { mosaic ->
-                        MosaicRowItem(mosaic = mosaic, viewModel = viewModel)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MosaicRowItem(mosaic: Mosaic, viewModel: WorshipViewModel) {
-    val songList by viewModel.songs.collectAsState()
-    val songIds = remember(mosaic) {
-        mosaic.songIds.split(",").mapNotNull { it.toLongOrNull() }
-    }
-    val firstSongId = songIds.firstOrNull()
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                if (firstSongId != null) {
-                    viewModel.navigateTo(Screen.WorshipMode(firstSongId, mosaic.id, 0))
-                }
-            }
-            .testTag("mosaic_item_${mosaic.id}")
-    ) {
+        // Cabecera superior del modo púlpito con controles
         Row(
             modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = mosaic.name,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${songIds.size} canciones en total",
-                    fontSize = 13.sp,
-                    color = Color.Gray
+            IconButton(
+                onClick = { viewModel.navigateTo(Screen.Boletin) }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Salir",
+                    tint = Color.White
                 )
             }
 
-            Row {
-                IconButton(onClick = { viewModel.deleteMosaic(mosaic) }) {
-                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.Red)
+            Text(
+                text = "MODO PÚLIPTO",
+                color = goldAccent, // Oro / Gold para alto contraste
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 2.sp
+            )
+
+            // Controles de Tamaño de Texto
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { textScale = (textScale - 1f).coerceAtLeast(11f) }) {
+                    Icon(Icons.Default.Remove, contentDescription = "Menos zoom", tint = Color.White)
                 }
-                IconButton(onClick = {
-                    if (firstSongId != null) {
-                        viewModel.navigateTo(Screen.WorshipMode(firstSongId, mosaic.id, 0))
-                    }
-                }) {
-                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Iniciar", tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = "${textScale.toInt()}",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = { textScale = (textScale + 1f).coerceAtMost(28f) }) {
+                    Icon(Icons.Default.Add, contentDescription = "Más zoom", tint = Color.White)
                 }
             }
         }
-    }
-}
 
+        // Pestañas de Navegación en el Modo Púlpito (Boletín Semanal / Cronograma Anual)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
+                .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                "🗓️ Boletín Semanal" to 0,
+                "📅 Cronograma Anual" to 1
+            ).forEach { (title, index) ->
+                val isSelected = activeTab == index
+                val tabBg = if (isSelected) Color(0xFF1E3A8A) else Color.Transparent
+                val tabBorderColor = if (isSelected) goldAccent else Color.Transparent
+                val tabTextColor = if (isSelected) Color.White else Color.LightGray
 
-// 7. CREATE MOSAIC SCREEN
-@Composable
-fun CreateMosaicScreen(viewModel: WorshipViewModel) {
-    val songList by viewModel.songs.collectAsState()
-    var mosaicName by remember { mutableStateOf("") }
-    val selectedSongIds = remember { mutableStateListOf<Long>() }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(tabBg)
+                        .then(
+                            if (isSelected) Modifier.border(1.dp, tabBorderColor, RoundedCornerShape(8.dp))
+                            else Modifier
+                        )
+                        .clickable { activeTab = index }
+                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = title,
+                        color = tabTextColor,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
 
-    Scaffold(
-        topBar = {
-            Row(
+        if (activeTab == 0) {
+            // -------------------------------------------------------------
+            // PESTAÑA 0: BOLETÍN SEMANAL
+            // -------------------------------------------------------------
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(vertical = 4.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.navigateBack() }) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Cancelar")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "BOLETÍN SEMANAL",
+                    color = goldAccent,
+                    fontSize = (textScale + 6f).sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                )
+                if (bulletin.dateRange.isNotBlank()) {
                     Text(
-                        text = "Nuevo Mosaico",
-                        fontSize = 18.sp,
+                        text = "Semana: ${bulletin.dateRange}",
+                        color = Color.White,
+                        fontSize = (textScale + 2f).sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-
-                Button(
-                    onClick = {
-                        if (mosaicName.trim().isNotEmpty() && selectedSongIds.isNotEmpty()) {
-                            viewModel.saveMosaic(mosaicName, selectedSongIds) {
-                                viewModel.navigateBack()
-                            }
-                        }
-                    },
-                    enabled = mosaicName.trim().isNotEmpty() && selectedSongIds.isNotEmpty(),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.testTag("btn_save_mosaic")
-                ) {
-                    Text("Guardar")
+                if (bulletin.committee.isNotBlank()) {
+                    Text(
+                        text = "Comité a Cargo: ${bulletin.committee}",
+                        color = Color.LightGray,
+                        fontSize = textScale.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp)
-        ) {
-            OutlinedTextField(
-                value = mosaicName,
-                onValueChange = { mosaicName = it },
-                label = { Text("Nombre del Mosaico") },
-                singleLine = true,
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Contenedor principal con Scroll Vertical para la tabla y los anuncios inferiores
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("input_mosaic_name")
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Selecciona las canciones (${selectedSongIds.size})",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (songList.isEmpty()) {
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text("No hay canciones para agregar. Crea algunas primero.")
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(songList) { song ->
-                        val isSelected = selectedSongIds.contains(song.id)
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    if (isSelected) {
-                                        selectedSongIds.remove(song.id)
-                                    } else {
-                                        selectedSongIds.add(song.id)
-                                    }
-                                }
-                        ) {
+                    .fillMaxSize()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 2. Tabla Completa Semanal
+                item {
+                    val horizontalScrollState = rememberScrollState()
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(horizontalScrollState)
+                            .background(Color(0xFF1E293B), RoundedCornerShape(12.dp)) // Dark slate card background
+                            .border(1.5.dp, goldAccent.copy(alpha = 0.8f), RoundedCornerShape(12.dp)) // bordes dorados
+                            .padding(8.dp)
+                    ) {
+                        Column {
+                            // Fila de Encabezados de la Tabla
                             Row(
                                 modifier = Modifier
-                                    .padding(12.dp)
-                                    .fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .background(royalBlueDark) // Encabezado en Azul Rey elegante
+                                    .padding(vertical = 8.dp)
                             ) {
-                                Column {
-                                    Text(song.title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                    Text("${song.category} • Tono: ${song.key}", fontSize = 12.sp, color = Color.Gray)
-                                }
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = {
-                                        if (isSelected) {
-                                            selectedSongIds.remove(song.id)
-                                        } else {
-                                            selectedSongIds.add(song.id)
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// 8. FAVORITES SCREEN
-@Composable
-fun FavoritesScreen(viewModel: WorshipViewModel) {
-    val favoriteList by viewModel.favorites.collectAsState()
-
-    val listState = rememberLazyListState()
-    var isScrollRestored by remember { mutableStateOf(false) }
-
-    LaunchedEffect(favoriteList) {
-        if (favoriteList.isNotEmpty() && !isScrollRestored) {
-            if (viewModel.favoritesScrollIndex < favoriteList.size) {
-                listState.scrollToItem(viewModel.favoritesScrollIndex, viewModel.favoritesScrollOffset)
-            }
-            isScrollRestored = true
-        }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
-            .collect { (index, offset) ->
-                if (isScrollRestored) {
-                    viewModel.favoritesScrollIndex = index
-                    viewModel.favoritesScrollOffset = offset
-                }
-            }
-    }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Favoritos",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (favoriteList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                        Icon(imageVector = Icons.Default.FavoriteBorder, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Aún no tienes canciones favoritas.", color = Color.Gray)
-                    }
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    items(favoriteList, key = { it.id }) { song ->
-                        SongRowItem(song = song, onClick = {
-                            viewModel.navigateTo(Screen.SongDetail(song.id))
-                        }, onFavoriteToggle = {
-                            viewModel.toggleFavorite(song)
-                        })
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// 9. SEARCH SCREEN
-@Composable
-fun SearchScreen(viewModel: WorshipViewModel) {
-    val songList by viewModel.songs.collectAsState()
-    var query by remember { mutableStateOf(viewModel.searchQuery) }
-
-    LaunchedEffect(query) {
-        viewModel.searchQuery = query
-    }
-
-    val searchResults = remember(songList, query) {
-        if (query.trim().isEmpty()) {
-            emptyList()
-        } else {
-            songList.filter {
-                it.title.contains(query, ignoreCase = true) ||
-                it.lyrics.contains(query, ignoreCase = true) ||
-                it.category.contains(query, ignoreCase = true) ||
-                it.key.contains(query, ignoreCase = true)
-            }
-        }
-    }
-
-    val listState = rememberLazyListState()
-    var isScrollRestored by remember { mutableStateOf(false) }
-
-    LaunchedEffect(searchResults) {
-        if (searchResults.isNotEmpty() && !isScrollRestored) {
-            if (viewModel.searchScrollIndex < searchResults.size) {
-                listState.scrollToItem(viewModel.searchScrollIndex, viewModel.searchScrollOffset)
-            }
-            isScrollRestored = true
-        }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
-            .collect { (index, offset) ->
-                if (isScrollRestored) {
-                    viewModel.searchScrollIndex = index
-                    viewModel.searchScrollOffset = offset
-                }
-            }
-    }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Buscar por título, letra, tono...") },
-                    leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = "" }) {
-                                Icon(imageVector = Icons.Default.Close, contentDescription = "Limpiar")
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color.Gray
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 8.dp)
-                        .testTag("search_input_field")
-                )
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-        ) {
-            if (query.trim().isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Escribe algo para comenzar a buscar", color = Color.Gray)
-                }
-            } else if (searchResults.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No se encontraron resultados para '$query'", color = Color.Gray)
-                }
-            } else {
-                Text(
-                    text = "Resultados (${searchResults.size})",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(searchResults, key = { it.id }) { song ->
-                        SongRowItem(song = song, onClick = {
-                            viewModel.navigateTo(Screen.SongDetail(song.id))
-                        }, onFavoriteToggle = {
-                            viewModel.toggleFavorite(song)
-                        })
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// 10. SESSION LEADER SCREEN (MODO DIRECTOR)
-@Composable
-fun SessionLeaderScreen(viewModel: WorshipViewModel) {
-    val isSessionActive by viewModel.isSessionActive.collectAsState()
-    val connectedCount by viewModel.connectedClientsCount.collectAsState()
-    val commands by viewModel.commands.collectAsState()
-    var enteredPassword by remember { mutableStateOf("") }
-    var isUnlocked by remember { mutableStateOf(false) }
-    var passwordError by remember { mutableStateOf(false) }
-
-    var showCommandManager by remember { mutableStateOf(false) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf(false) }
-    var newCommandText by remember { mutableStateOf("") }
-    var editingCommand by remember { mutableStateOf<com.example.data.model.WorshipCommand?>(null) }
-    var editingCommandText by remember { mutableStateOf("") }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Modo Director (Sesión)",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp)
-        ) {
-            if (!isUnlocked && !isSessionActive) {
-                // Password lock screen
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(imageVector = Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Acceso Restringido", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("Ingresa la contraseña del Director", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    OutlinedTextField(
-                        value = enteredPassword,
-                        onValueChange = {
-                            enteredPassword = it
-                            passwordError = false
-                        },
-                        label = { Text("Contraseña") },
-                        singleLine = true,
-                        isError = passwordError,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("password_input")
-                    )
-
-                    if (passwordError) {
-                        Text("Contraseña incorrecta. Intenta nuevamente.", color = Color.Red, fontSize = 12.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            if (enteredPassword == viewModel.leaderPassword) {
-                                isUnlocked = true
-                            } else {
-                                passwordError = true
-                            }
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("btn_unlock_director")
-                    ) {
-                        Text("Desbloquear")
-                    }
-                }
-            } else {
-                // Session Leader active panel
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSessionActive) Color(0xFF2E7D32).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(12.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(if (isSessionActive) Color.Green else Color.Gray)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (isSessionActive) "SESIÓN ACTIVA" else "SESIÓN INACTIVA",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = if (isSessionActive) Color(0xFF2E7D32) else Color.Gray
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            if (isSessionActive) {
-                                Text("IP del Director: ${viewModel.localIpAddress}", fontWeight = FontWeight.Bold)
-                                Text("Puerto de Sincronización: 9876", fontSize = 12.sp, color = Color.Gray)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("Integrantes conectados: $connectedCount", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("Inicia la sesión para transmitir canciones y comandos en vivo a todo tu equipo conectado a la red local.")
+                                TableHeaderCell(text = "Día", width = 90.dp, size = textScale)
+                                TableHeaderCell(text = "Culto / Servicio", width = 160.dp, size = textScale)
+                                TableHeaderCell(text = "Hora", width = 80.dp, size = textScale)
+                                TableHeaderCell(text = "Ujieres", width = 140.dp, size = textScale)
+                                TableHeaderCell(text = "Alabanza", width = 140.dp, size = textScale)
+                                TableHeaderCell(text = "Decom", width = 110.dp, size = textScale)
+                                TableHeaderCell(text = "Sonido", width = 110.dp, size = textScale)
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            HorizontalDivider(color = goldAccent, thickness = 1.5.dp)
 
-                            Button(
-                                onClick = {
-                                    if (isSessionActive) {
-                                        viewModel.stopWorshipSession()
-                                    } else {
-                                        viewModel.startWorshipSession()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isSessionActive) Color.Red else MaterialTheme.colorScheme.primary
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                                    .testTag("btn_toggle_session")
-                            ) {
-                                Text(if (isSessionActive) "Detener Sesión" else "Iniciar Sesión")
-                            }
-                        }
-                    }
-
-                    if (isSessionActive) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Enviar Comandos Directos",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            TextButton(
-                                onClick = { showCommandManager = true },
-                                modifier = Modifier.testTag("btn_personalizar_comandos")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Personalizar", fontSize = 13.sp)
-                            }
-                        }
-
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(1),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            items(commands) { cmdObj ->
-                                val cmd = cmdObj.text
-                                Button(
-                                    onClick = { viewModel.broadcastOverlayCommand(cmd) },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = when {
-                                            cmd.startsWith("🔵") || cmd.uppercase().contains("REPETIMOS") || cmd.uppercase().contains("CORO") -> Color(0xFF1565C0)
-                                            cmd.startsWith("🟢") || cmd.uppercase().contains("PIANO") || cmd.uppercase().contains("SOLO") -> Color(0xFF2E7D32)
-                                            cmd.startsWith("🟡") || cmd.uppercase().contains("BANDA") -> Color(0xFFEF6C00)
-                                            cmd.startsWith("🔴") || cmd.uppercase().contains("TERMINAMOS") || cmd.uppercase().contains("FIN") -> Color(0xFFC62828)
-                                            else -> MaterialTheme.colorScheme.surfaceVariant
-                                        },
-                                        contentColor = when {
-                                            cmd.startsWith("🔵") || cmd.uppercase().contains("REPETIMOS") || cmd.uppercase().contains("CORO") ||
-                                            cmd.startsWith("🟢") || cmd.uppercase().contains("PIANO") || cmd.uppercase().contains("SOLO") ||
-                                            cmd.startsWith("🟡") || cmd.uppercase().contains("BANDA") ||
-                                            cmd.startsWith("🔴") || cmd.uppercase().contains("TERMINAMOS") || cmd.uppercase().contains("FIN") -> Color.White
-                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        }
-                                    ),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(54.dp)
-                                        .testTag("cmd_button_${cmdObj.id}")
-                                ) {
-                                    Text(cmd, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    if (showCommandManager) {
-                        AlertDialog(
-                            onDismissRequest = { showCommandManager = false },
-                            title = {
+                            // Filas para los 7 días de la semana
+                            bulletin.days.forEach { day ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier
+                                        .padding(vertical = 6.dp)
+                                        .fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "Personalizar Comandos",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    IconButton(onClick = {
-                                        viewModel.resetCommandsToDefault()
-                                    }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Refresh,
-                                            contentDescription = "Restablecer predeterminados",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
+                                    TableCell(text = day.dayName, width = 90.dp, size = textScale, isDayName = true)
+                                    TableCell(text = day.serviceName, width = 160.dp, size = textScale)
+                                    TableCell(text = day.time, width = 80.dp, size = textScale)
+                                    TableCell(text = day.ushers, width = 140.dp, size = textScale)
+                                    TableCell(text = day.worshipTeam, width = 140.dp, size = textScale)
+                                    TableCell(text = day.decom, width = 110.dp, size = textScale)
+                                    TableCell(text = day.sound, width = 110.dp, size = textScale)
                                 }
-                            },
-                            text = {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 380.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Text(
-                                        text = "Agrega, edita, reordena o elimina los comandos disponibles para el equipo.",
-                                        fontSize = 12.sp,
-                                        color = Color.Gray
-                                    )
-
-                                    if (commands.isEmpty()) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(120.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("No hay comandos creados.", color = Color.Gray)
-                                        }
-                                    } else {
-                                        LazyColumn(
-                                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .weight(1f, fill = false)
-                                        ) {
-                                            itemsIndexed(commands) { index, cmd ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .background(
-                                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                                            RoundedCornerShape(12.dp)
-                                                        )
-                                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = cmd.text,
-                                                        fontSize = 14.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .padding(horizontal = 4.dp),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-
-                                                    IconButton(
-                                                        onClick = { viewModel.moveCommandUp(cmd) },
-                                                        enabled = index > 0,
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.ArrowUpward,
-                                                            contentDescription = "Subir",
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = if (index > 0) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f)
-                                                        )
-                                                    }
-
-                                                    IconButton(
-                                                        onClick = { viewModel.moveCommandDown(cmd) },
-                                                        enabled = index < commands.size - 1,
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.ArrowDownward,
-                                                            contentDescription = "Bajar",
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = if (index < commands.size - 1) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f)
-                                                        )
-                                                    }
-
-                                                    IconButton(
-                                                        onClick = {
-                                                            editingCommand = cmd
-                                                            editingCommandText = cmd.text
-                                                            showEditDialog = true
-                                                        },
-                                                        modifier = Modifier.size(32.dp).testTag("btn_edit_cmd_${cmd.id}")
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Edit,
-                                                            contentDescription = "Editar",
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = MaterialTheme.colorScheme.secondary
-                                                        )
-                                                    }
-
-                                                    IconButton(
-                                                        onClick = { viewModel.deleteCommand(cmd) },
-                                                        modifier = Modifier.size(32.dp).testTag("btn_delete_cmd_${cmd.id}")
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Delete,
-                                                            contentDescription = "Eliminar",
-                                                            modifier = Modifier.size(18.dp),
-                                                            tint = Color.Red.copy(alpha = 0.8f)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Button(
-                                        onClick = {
-                                            newCommandText = ""
-                                            showAddDialog = true
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(44.dp)
-                                            .testTag("btn_agregar_nuevo_comando_trigger")
-                                    ) {
-                                        Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Agregar Comando")
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                TextButton(
-                                    onClick = { showCommandManager = false },
-                                    modifier = Modifier.testTag("btn_cerrar_manager")
-                                ) {
-                                    Text("Cerrar")
-                                }
-                            },
-                            shape = RoundedCornerShape(24.dp),
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-
-                    if (showAddDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showAddDialog = false },
-                            title = { Text("Agregar Comando", fontWeight = FontWeight.Bold) },
-                            text = {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("Escribe el texto para el nuevo botón. Puedes usar emojis al inicio para darle color (🔵, 🟢, 🟡, 🔴).", fontSize = 12.sp, color = Color.Gray)
-                                    OutlinedTextField(
-                                        value = newCommandText,
-                                        onValueChange = { newCommandText = it },
-                                        placeholder = { Text("Ej: 🔵 SOLO BAJO") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth().testTag("input_new_cmd_text")
-                                    )
-                                }
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        if (newCommandText.isNotBlank()) {
-                                            viewModel.addCommand(newCommandText.trim())
-                                            showAddDialog = false
-                                        }
-                                    },
-                                    enabled = newCommandText.isNotBlank(),
-                                    modifier = Modifier.testTag("btn_save_new_cmd")
-                                ) {
-                                    Text("Guardar")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showAddDialog = false }) {
-                                    Text("Cancelar")
-                                }
-                            },
-                            shape = RoundedCornerShape(20.dp)
-                        )
-                    }
-
-                    if (showEditDialog) {
-                        val currentCmd = editingCommand
-                        if (currentCmd != null) {
-                            AlertDialog(
-                                onDismissRequest = { showEditDialog = false },
-                                title = { Text("Editar Comando", fontWeight = FontWeight.Bold) },
-                                text = {
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("Escribe el nuevo texto para el comando.", fontSize = 12.sp, color = Color.Gray)
-                                        OutlinedTextField(
-                                            value = editingCommandText,
-                                            onValueChange = { editingCommandText = it },
-                                            singleLine = true,
-                                            modifier = Modifier.fillMaxWidth().testTag("input_edit_cmd_text")
-                                        )
-                                    }
-                                },
-                                confirmButton = {
-                                    Button(
-                                        onClick = {
-                                            if (editingCommandText.isNotBlank()) {
-                                                viewModel.updateCommand(currentCmd.copy(text = editingCommandText.trim()))
-                                                showEditDialog = false
-                                            }
-                                        },
-                                        enabled = editingCommandText.isNotBlank(),
-                                        modifier = Modifier.testTag("btn_save_edit_cmd")
-                                    ) {
-                                        Text("Actualizar")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showEditDialog = false }) {
-                                        Text("Cancelar")
-                                    }
-                                },
-                                shape = RoundedCornerShape(20.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// 11. SESSION MEMBER SCREEN (MODO INTEGRANTE)
-@Composable
-fun SessionMemberScreen(viewModel: WorshipViewModel) {
-    val memberStatus by viewModel.memberStatus.collectAsState()
-    val discoveredLeaders by viewModel.discoveredLeaders.collectAsState()
-    var manualIp by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        viewModel.startDiscoveringLeaders()
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            viewModel.stopDiscoveringLeaders()
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Modo Integrante",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
-        ) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = when (memberStatus) {
-                            com.example.network.WorshipClient.ConnectionStatus.CONNECTED -> Color(0xFF1565C0).copy(alpha = 0.15f)
-                            com.example.network.WorshipClient.ConnectionStatus.CONNECTING -> Color(0xFFFF9800).copy(alpha = 0.15f)
-                            else -> MaterialTheme.colorScheme.surfaceVariant
-                        }
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = when (memberStatus) {
-                                com.example.network.WorshipClient.ConnectionStatus.CONNECTED -> "🔵 CONECTADO AL DIRECTOR"
-                                com.example.network.WorshipClient.ConnectionStatus.CONNECTING -> "🟡 CONECTANDO..."
-                                else -> "🔴 NO CONECTADO"
-                            },
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = when (memberStatus) {
-                                com.example.network.WorshipClient.ConnectionStatus.CONNECTED -> Color(0xFF1565C0)
-                                com.example.network.WorshipClient.ConnectionStatus.CONNECTING -> Color(0xFFFF9800)
-                                else -> Color.Red
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("En esta pantalla puedes unirte a la sesión del Director de tu iglesia. Una vez conectado, tu app cargará automáticamente las canciones elegidas por el director y mostrará mensajes en pantalla completa en tiempo real.")
-
-                        if (memberStatus == com.example.network.WorshipClient.ConnectionStatus.CONNECTED) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { viewModel.disconnectFromLeader() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Desconectar")
+                                HorizontalDivider(color = Color.Gray.copy(alpha = 0.3f), thickness = 0.5.dp)
                             }
                         }
                     }
                 }
-            }
 
-            if (memberStatus != com.example.network.WorshipClient.ConnectionStatus.CONNECTED) {
+                // Indicador de deslizamiento horizontal si es necesario
                 item {
-                    Text("Directores en la Red (Buscando...)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
-
-                if (discoveredLeaders.isEmpty()) {
-                    item {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Box(modifier = Modifier.padding(20.dp), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text("Buscando directores activos...", fontSize = 13.sp, color = Color.Gray)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    items(discoveredLeaders) { leader ->
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.connectToLeader(leader.second)
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(leader.first, fontWeight = FontWeight.Bold)
-                                    Text("IP: ${leader.second}", fontSize = 12.sp, color = Color.Gray)
-                                }
-                                Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null)
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Text("Conexión Manual", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
-
-                item {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            OutlinedTextField(
-                                value = manualIp,
-                                onValueChange = { manualIp = it },
-                                label = { Text("IP del Director (Ej: 192.168.1.100)") },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("manual_ip_input")
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = {
-                                    if (manualIp.trim().isNotEmpty()) {
-                                        viewModel.connectToLeader(manualIp.trim())
-                                    }
-                                },
-                                enabled = manualIp.trim().isNotEmpty(),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("btn_connect_manual")
-                            ) {
-                                Text("Conectar por IP")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// 12. IMPORT / EXPORT SCREEN
-@Composable
-fun ImportExportScreen(viewModel: WorshipViewModel) {
-    val context = LocalContext.current
-    val importStats by remember { derivedStateOf { viewModel.importStats } }
-    var showImportConfirm by remember { mutableStateOf(false) }
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.analyzeImportFile(context, uri)
-            showImportConfirm = true
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Importar / Exportar",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            Text("Comparte tu cancionero con el resto de integrantes de manera manual, sin necesidad de cuentas ni servidores en la nube.")
-
-            // Export Box
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text("Exportar Cancionero", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Genera un archivo portátil '.alabanza' que contiene todas tus canciones y envíalo por WhatsApp, Telegram, Bluetooth o correo.")
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            viewModel.exportSongbook(context) { file ->
-                                val fileUri = FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    file
-                                )
-                                val sendIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_STREAM, fileUri)
-                                    type = "application/octet-stream"
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                val shareIntent = Intent.createChooser(sendIntent, "Exportar Cancionero")
-                                context.startActivity(shareIntent)
-                            }
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("btn_exportar")
-                    ) {
-                        Icon(imageVector = Icons.Default.Share, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Exportar Cancionero")
-                    }
-                }
-            }
-
-            // Import Box
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text("Importar Cancionero", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Selecciona un archivo '.alabanza' recibido para agregar nuevas canciones o actualizar las existentes de forma inteligente.")
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            filePickerLauncher.launch("*/*")
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("btn_importar")
-                    ) {
-                        Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Seleccionar Archivo")
-                    }
-                }
-            }
-        }
-
-        // Smart Import Confirmation Dialog
-        if (showImportConfirm && importStats != null) {
-            val stats = importStats!!
-            AlertDialog(
-                onDismissRequest = {
-                    viewModel.clearImportState()
-                    showImportConfirm = false
-                },
-                title = { Text("📊 Análisis de Importación Inteligente") },
-                text = {
-                    Column {
-                        Text("Se analizó el archivo correctamente:")
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("• Canciones Nuevas: ${stats.newCount}", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                        Text("• Canciones con actualizaciones: ${stats.updatedCount}", fontWeight = FontWeight.Bold, color = Color(0xFF1565C0))
-                        Text("• Canciones duplicadas: ${stats.duplicateCount}", color = Color.Gray)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("¿Deseas completar la importación? Las canciones duplicadas se ignorarán automáticamente.")
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.confirmImport(overwriteExisting = true) {
-                                showImportConfirm = false
-                            }
-                        }
-                    ) {
-                        Text("Confirmar e Importar", fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.clearImportState()
-                            showImportConfirm = false
-                        }
-                    ) {
-                        Text("Cancelar", color = Color.Red)
-                    }
-                }
-            )
-        }
-    }
-}
-
-
-// 13. SETTINGS SCREEN
-@Composable
-fun SettingsScreen(viewModel: WorshipViewModel) {
-    var passwordInput by remember { mutableStateOf(viewModel.leaderPassword) }
-
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Atrás")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Configuración",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Dark Theme Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Tema Oscuro", fontWeight = FontWeight.Bold)
-                    Text("Fondo oscuro para mayor legibilidad", fontSize = 12.sp, color = Color.Gray)
-                }
-                Switch(
-                    checked = viewModel.isDarkMode,
-                    onCheckedChange = { viewModel.updateDarkMode(it) },
-                    modifier = Modifier.testTag("switch_dark_mode")
-                )
-            }
-
-            Divider()
-
-            // Keep Screen Awake Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Mantener Pantalla Activa", fontWeight = FontWeight.Bold)
-                    Text("Evita que la pantalla se apague al cantar", fontSize = 12.sp, color = Color.Gray)
-                }
-                Switch(
-                    checked = viewModel.keepScreenAwake,
-                    onCheckedChange = { viewModel.updateKeepScreenAwake(it) }
-                )
-            }
-
-            Divider()
-
-            // Chords by Default Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Mostrar Acordes por Defecto", fontWeight = FontWeight.Bold)
-                    Text("Carga las letras con acordes automáticamente", fontSize = 12.sp, color = Color.Gray)
-                }
-                Switch(
-                    checked = viewModel.showChordsByDefault,
-                    onCheckedChange = { viewModel.updateShowChordsByDefault(it) }
-                )
-            }
-
-            Divider()
-
-            // Haptic Feedback Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Vibración por comandos", fontWeight = FontWeight.Bold)
-                    Text("Vibrar brevemente al recibir cambios del director", fontSize = 12.sp, color = Color.Gray)
-                }
-                Switch(
-                    checked = viewModel.hapticFeedbackEnabled,
-                    onCheckedChange = { viewModel.updateHapticFeedbackEnabled(it) },
-                    modifier = Modifier.testTag("switch_haptic_feedback")
-                )
-            }
-
-            Divider()
-
-            // Password customization
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Contraseña del Director", fontWeight = FontWeight.Bold)
-                Text("Evita que integrantes inicien sesión como directores", fontSize = 12.sp, color = Color.Gray)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = { passwordInput = it },
-                        singleLine = true,
-                        placeholder = { Text("1234") },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("settings_password_input")
-                    )
-
-                    Button(
-                        onClick = {
-                            if (passwordInput.trim().isNotEmpty()) {
-                                viewModel.updateLeaderPassword(passwordInput.trim())
-                            }
-                        },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Guardar")
-                    }
-                }
-            }
-
-            val context = LocalContext.current
-            var showRestoreConfirmDialog by remember { mutableStateOf<android.net.Uri?>(null) }
-            var showImportConfirm by remember { mutableStateOf(false) }
-            val importStats by remember { derivedStateOf { viewModel.importStats } }
-
-            val backupLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
-                onResult = { uri ->
-                    uri?.let {
-                        val outputStream = context.contentResolver.openOutputStream(it)
-                        if (outputStream != null) {
-                            viewModel.backupDatabase(
-                                outputStream = outputStream,
-                                onSuccess = {
-                                    android.widget.Toast.makeText(context, "✅ Copia de seguridad guardada con éxito", android.widget.Toast.LENGTH_LONG).show()
-                                },
-                                onError = { error ->
-                                    android.widget.Toast.makeText(context, "❌ $error", android.widget.Toast.LENGTH_LONG).show()
-                                }
-                            )
-                        } else {
-                            android.widget.Toast.makeText(context, "❌ No se pudo abrir el archivo de destino", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            )
-
-            val restoreLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.OpenDocument(),
-                onResult = { uri ->
-                    uri?.let {
-                        showRestoreConfirmDialog = it
-                    }
-                }
-            )
-
-            val jsonBackupLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.CreateDocument("application/json"),
-                onResult = { uri ->
-                    uri?.let {
-                        val outputStream = context.contentResolver.openOutputStream(it)
-                        if (outputStream != null) {
-                            viewModel.exportSongbookJson(
-                                outputStream = outputStream,
-                                onSuccess = {
-                                    android.widget.Toast.makeText(context, "✅ Cancionero exportado en formato JSON con éxito", android.widget.Toast.LENGTH_LONG).show()
-                                },
-                                onError = { error ->
-                                    android.widget.Toast.makeText(context, "❌ $error", android.widget.Toast.LENGTH_LONG).show()
-                                }
-                            )
-                        } else {
-                            android.widget.Toast.makeText(context, "❌ No se pudo abrir el archivo de destino", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            )
-
-            val jsonRestoreLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.GetContent(),
-                onResult = { uri ->
-                    uri?.let {
-                        viewModel.analyzeImportFile(context, it)
-                        showImportConfirm = true
-                    }
-                }
-            )
-
-            if (showRestoreConfirmDialog != null) {
-                AlertDialog(
-                    onDismissRequest = { showRestoreConfirmDialog = null },
-                    title = { Text("¿Restaurar Base de Datos?") },
-                    text = {
-                        Text("Esto reemplazará todas las canciones, mosaicos e indicaciones actuales. La aplicación se reiniciará automáticamente para aplicar los cambios.")
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                val uri = showRestoreConfirmDialog
-                                showRestoreConfirmDialog = null
-                                if (uri != null) {
-                                    val inputStream = context.contentResolver.openInputStream(uri)
-                                    if (inputStream != null) {
-                                        viewModel.restoreDatabase(
-                                            inputStream = inputStream,
-                                            onSuccess = {
-                                                android.widget.Toast.makeText(context, "✅ Restauración completa. Reiniciando...", android.widget.Toast.LENGTH_LONG).show()
-                                                restartApp(context)
-                                            },
-                                            onError = { error ->
-                                                android.widget.Toast.makeText(context, "❌ $error", android.widget.Toast.LENGTH_LONG).show()
-                                            }
-                                        )
-                                    } else {
-                                        android.widget.Toast.makeText(context, "❌ No se pudo leer el archivo de origen", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("Confirmar y Reiniciar")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showRestoreConfirmDialog = null }) {
-                            Text("Cancelar")
-                        }
-                    }
-                )
-            }
-
-            if (showImportConfirm && importStats != null) {
-                val stats = importStats!!
-                AlertDialog(
-                    onDismissRequest = {
-                        viewModel.clearImportState()
-                        showImportConfirm = false
-                    },
-                    title = { Text("📊 Análisis de Importación Inteligente") },
-                    text = {
-                        Column {
-                            Text("Se analizó el archivo correctamente:")
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("• Canciones Nuevas: ${stats.newCount}", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                            Text("• Canciones con actualizaciones: ${stats.updatedCount}", fontWeight = FontWeight.Bold, color = Color(0xFF1565C0))
-                            Text("• Canciones duplicadas: ${stats.duplicateCount}", color = Color.Gray)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Selecciona el método de importación para evitar duplicados:")
-                        }
-                    },
-                    confirmButton = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    viewModel.confirmImport(overwriteExisting = true) {
-                                        showImportConfirm = false
-                                        android.widget.Toast.makeText(context, "✅ Importación exitosa (nuevas y actualizadas)", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().testTag("import_confirm_overwrite")
-                            ) {
-                                Text("Añadir Nuevas y Actualizar Existentes", fontSize = 12.sp)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.confirmImport(overwriteExisting = false) {
-                                        showImportConfirm = false
-                                        android.widget.Toast.makeText(context, "✅ Importación exitosa (solo nuevas)", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().testTag("import_confirm_new_only")
-                            ) {
-                                Text("Solo Añadir Nuevas (Evitar Duplicados)", fontSize = 12.sp)
-                            }
-                            TextButton(
-                                onClick = {
-                                    viewModel.clearImportState()
-                                    showImportConfirm = false
-                                },
-                                modifier = Modifier.align(Alignment.End)
-                            ) {
-                                Text("Cancelar", color = Color.Red)
-                            }
-                        }
-                    }
-                )
-            }
-
-            Divider()
-
-            // 1. Full Database Backup / Restore Card (.db)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .testTag("backup_restore_card"),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Backup,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            text = "Base de Datos Completa (.db)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
-
-                    Text(
-                        text = "Guarda una copia exacta de toda la base de datos (canciones, mosaicos, indicaciones, categorías y configuraciones) en un archivo .db, o restaura una copia existente.",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                        lineHeight = 16.sp
-                    )
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                backupLauncher.launch("cancionero_respaldo.db")
-                            },
-                            modifier = Modifier.weight(1f).testTag("backup_db_button"),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Respaldar", fontSize = 13.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                restoreLauncher.launch(arrayOf("*/*"))
-                            },
-                            modifier = Modifier.weight(1f).testTag("restore_db_button"),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Restaurar", fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-
-            // 2. JSON Songs Import / Export Card (.json)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .testTag("songs_json_card"),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Default.SwapHoriz,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
+                            tint = goldAccent.copy(alpha = 0.8f),
+                            modifier = Modifier.size(16.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Exportar/Importar Canciones (.json)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            text = "Desliza lateralmente para ver la tabla completa",
+                            color = Color.LightGray.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
+                }
 
-                    Text(
-                        text = "Exporta tu cancionero en formato JSON para editar o compartir, o importa nuevas canciones de forma inteligente comparando entradas y evitando duplicados.",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                        lineHeight = 16.sp
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // 3. Bloque Inferior: Anuncios Generales
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                            .border(1.5.dp, goldAccent.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                            .padding(16.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                jsonBackupLauncher.launch("cancionero_export.json")
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                            modifier = Modifier.weight(1f).testTag("export_json_button"),
-                            shape = RoundedCornerShape(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Share,
+                                imageVector = Icons.Default.Campaign,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                                tint = goldAccent,
+                                modifier = Modifier.size(24.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Exportar JSON", fontSize = 13.sp)
+                            Text(
+                                text = "ANUNCIOS GENERALES Y AVISOS",
+                                color = goldAccent,
+                                fontSize = (textScale + 2f).sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
                         }
 
-                        OutlinedButton(
-                            onClick = {
-                                jsonRestoreLauncher.launch("application/json")
-                            },
-                            modifier = Modifier.weight(1f).testTag("import_json_button"),
-                            shape = RoundedCornerShape(12.dp)
+                        HorizontalDivider(color = goldAccent.copy(alpha = 0.4f), thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = bulletin.generalAnnouncements.ifBlank { "No hay anuncios generales registrados para esta semana." },
+                            color = Color.White,
+                            fontSize = textScale.sp,
+                            lineHeight = (textScale * 1.4f).sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        } else {
+            // -------------------------------------------------------------
+            // PESTAÑA 1: CRONOGRAMA ANUAL / PRÓXIMOS EVENTOS
+            // -------------------------------------------------------------
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = "CRONOGRAMA ANUAL",
+                    color = goldAccent,
+                    fontSize = (textScale + 6f).sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = "Próximos Eventos del Año (${months[currentMonthIndex]} en adelante)",
+                    color = Color.White,
+                    fontSize = (textScale).sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (upcomingEvents.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Importar JSON", fontSize = 13.sp)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.EventBusy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = Color.Gray.copy(alpha = 0.5f)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "No hay eventos programados para el resto del año.",
+                                    color = Color.LightGray,
+                                    fontSize = textScale.coerceAtLeast(14f).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(upcomingEvents) { item ->
+                        val badgeText = when {
+                            item.description.contains("ayuno", ignoreCase = true) || item.committee.contains("ayuno", ignoreCase = true) -> "Ayuno"
+                            item.description.contains("especial", ignoreCase = true) || item.committee.contains("especial", ignoreCase = true) -> "Especial"
+                            item.description.contains("reunión", ignoreCase = true) || item.committee.contains("reunion", ignoreCase = true) -> "Reunión"
+                            item.description.contains("vigilia", ignoreCase = true) || item.committee.contains("vigilia", ignoreCase = true) -> "Vigilia"
+                            item.description.contains("culto", ignoreCase = true) || item.committee.contains("culto", ignoreCase = true) -> "Culto"
+                            else -> "Actividad"
+                        }
+                        val badgeColor = when (badgeText) {
+                            "Ayuno" -> Color(0xFFC084FC) // Morado claro para fondo oscuro
+                            "Especial" -> Color(0xFFFBBF24) // Dorado/Amarillo
+                            "Reunión" -> Color(0xFF2DD4BF) // Teal
+                            "Vigilia" -> Color(0xFF818CF8) // Indigo
+                            "Culto" -> Color(0xFF60A5FA) // Azul
+                            else -> Color(0xFF94A3B8) // Slate gray
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                                .border(1.5.dp, goldAccent.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                                .padding(16.dp)
+                        ) {
+                            // Rango de Días y Mes
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = null,
+                                    tint = goldAccent,
+                                    modifier = Modifier.size((textScale + 2f).coerceAtLeast(18f).dp)
+                                )
+                                val resolvedMonthName = if (item.month.isNotBlank()) item.month else {
+                                    months.firstOrNull { item.date.contains(it, ignoreCase = true) } ?: months[currentMonthIndex]
+                                }
+                                Text(
+                                    text = "${resolvedMonthName.uppercase()} - ${item.date}",
+                                    color = goldAccent,
+                                    fontSize = (textScale + 2f).coerceAtLeast(18f).sp, // Mantiene tipografía grande de 18px+
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Comité o Evento + Badge
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(badgeColor.copy(alpha = 0.2f))
+                                        .border(1.dp, badgeColor, RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        fontSize = (textScale - 4f).coerceAtLeast(11f).sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = badgeColor
+                                    )
+                                }
+
+                                Text(
+                                    text = item.committee,
+                                    color = Color.White,
+                                    fontSize = (textScale + 1f).coerceAtLeast(16f).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Notas / Detalles / Observaciones
+                            if (item.description.isNotBlank()) {
+                                Text(
+                                    text = item.description,
+                                    color = Color.LightGray,
+                                    fontSize = textScale.coerceAtLeast(14f).sp,
+                                    lineHeight = (textScale * 1.35f).coerceAtLeast(18f).sp,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            }
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
-fun restartApp(context: android.content.Context) {
-    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-    intent?.let {
-        it.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        context.startActivity(it)
-        var currentContext = context
-        while (currentContext is android.content.ContextWrapper) {
-            if (currentContext is android.app.Activity) {
-                currentContext.finish()
-                break
+@Composable
+fun TableHeaderCell(text: String, width: androidx.compose.ui.unit.Dp, size: Float) {
+    Text(
+        text = text,
+        color = Color(0xFFFEF3C7), // Light Gold text
+        fontSize = (size - 1f).coerceAtLeast(11f).sp,
+        fontWeight = FontWeight.ExtraBold,
+        modifier = Modifier
+            .width(width)
+            .padding(horizontal = 6.dp),
+        textAlign = TextAlign.Start,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+fun TableCell(text: String, width: androidx.compose.ui.unit.Dp, size: Float, isDayName: Boolean = false) {
+    val displayStr = if (text.isBlank()) "-" else text
+    Text(
+        text = displayStr,
+        color = if (isDayName) Color(0xFFCA8A04) else if (text.isBlank()) Color.Gray else Color.White,
+        fontSize = (size - 2f).coerceAtLeast(10f).sp,
+        fontWeight = if (isDayName) FontWeight.Bold else FontWeight.Medium,
+        modifier = Modifier
+            .width(width)
+            .padding(horizontal = 6.dp),
+        textAlign = TextAlign.Start,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+
+// -------------------------------------------------------------
+// MÓDULO EXPORTACIÓN: PDF Y COMPARTIR WHATSAPP
+// -------------------------------------------------------------
+fun printPdf(context: Context, bulletin: WeeklyBulletin) {
+    val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+    val jobName = "Boletín Eclesiástico - ${bulletin.dateRange}"
+
+    printManager.print(jobName, object : PrintDocumentAdapter() {
+        override fun onLayout(
+            oldAttributes: PrintAttributes?,
+            newAttributes: PrintAttributes,
+            cancellationSignal: CancellationSignal?,
+            callback: LayoutResultCallback,
+            extras: Bundle?
+        ) {
+            if (cancellationSignal?.isCanceled == true) {
+                callback.onLayoutCancelled()
+                return
             }
-            currentContext = currentContext.baseContext
+
+            val info = PrintDocumentInfo.Builder("boletin_eclesiastico.pdf")
+                .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                .setPageCount(1)
+                .build()
+
+            callback.onLayoutFinished(info, true)
         }
-        java.lang.System.exit(0)
+
+        override fun onWrite(
+            pages: Array<out android.print.PageRange>?,
+            destination: ParcelFileDescriptor,
+            cancellationSignal: CancellationSignal?,
+            callback: WriteResultCallback
+        ) {
+            val pdfDocument = PrintedPdfDocument(
+                context,
+                PrintAttributes.Builder()
+                    .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                    .setResolution(PrintAttributes.Resolution("id", "print", 300, 300))
+                    .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                    .build()
+            )
+
+            val page = pdfDocument.startPage(1)
+            val canvas = page.canvas
+
+            val headerBgPaint = Paint().apply {
+                color = AndroidColor.parseColor("#EFF6FF") // Light Royal Blue background
+                style = Paint.Style.FILL
+            }
+
+            val tableHeaderPaint = Paint().apply {
+                color = AndroidColor.parseColor("#1E3A8A") // Royal Blue
+                style = Paint.Style.FILL
+            }
+
+            val titlePaint = Paint().apply {
+                color = AndroidColor.parseColor("#1E3A8A") // Royal Blue
+                textSize = 18f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+
+            val subtitlePaint = Paint().apply {
+                color = AndroidColor.parseColor("#1E293B") // Slate text
+                textSize = 11f
+                isAntiAlias = true
+            }
+
+            val cellPaint = Paint().apply {
+                color = AndroidColor.parseColor("#1E293B") // Slate text
+                textSize = 9f
+                isAntiAlias = true
+            }
+
+            val boldCellPaint = Paint().apply {
+                color = AndroidColor.parseColor("#CA8A04") // Gold Accent for day names
+                textSize = 9f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+
+            val headerTextPaint = Paint().apply {
+                color = AndroidColor.WHITE
+                textSize = 9f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+
+            val borderPaint = Paint().apply {
+                color = AndroidColor.parseColor("#E2E8F0") // Slate Light Border
+                style = Paint.Style.STROKE
+                strokeWidth = 1f
+            }
+
+            val royalBorderPaint = Paint().apply {
+                color = AndroidColor.parseColor("#1E3A8A") // Royal Blue border
+                style = Paint.Style.STROKE
+                strokeWidth = 1f
+            }
+
+            val goldBorderPaint = Paint().apply {
+                color = AndroidColor.parseColor("#CA8A04") // Gold border
+                style = Paint.Style.STROKE
+                strokeWidth = 1f
+            }
+
+            val width = canvas.width
+            val height = canvas.height
+
+            // Encabezado del PDF
+            canvas.drawRect(30f, 30f, width - 30f, 90f, headerBgPaint)
+            canvas.drawRect(30f, 30f, width - 30f, 90f, royalBorderPaint)
+
+            canvas.drawText("SECRETARÍA ECLESIÁSTICA: BOLETÍN SEMANAL", 45f, 55f, titlePaint)
+            canvas.drawText(
+                "Rango de Fechas: ${bulletin.dateRange}   |   Comité a Cargo: ${bulletin.committee}",
+                45f,
+                80f,
+                subtitlePaint
+            )
+
+            // Dibujar la Tabla de Servidores Diarios
+            var y = 110f
+            val rowHeight = 25f
+            val headers = arrayOf("Día", "Servicio", "Hora", "Alabanza", "Ujieres", "DECOM/Sonido", "Uniforme")
+
+            // Encabezado de la Tabla
+            canvas.drawRect(30f, y, width - 30f, y + rowHeight, tableHeaderPaint)
+            canvas.drawRect(30f, y, width - 30f, y + rowHeight, royalBorderPaint)
+
+            var x = 30f
+            val colSize = (width - 60f) / headers.size
+            for (i in headers.indices) {
+                canvas.drawText(headers[i], x + 5f, y + 16f, headerTextPaint)
+                x += colSize
+            }
+            y += rowHeight
+
+            // Filas de la Tabla (Lunes a Domingo)
+            for (day in bulletin.days) {
+                canvas.drawRect(30f, y, width - 30f, y + rowHeight, borderPaint)
+
+                val cells = arrayOf(
+                    day.dayName,
+                    day.serviceName,
+                    day.time,
+                    day.worshipTeam,
+                    day.ushers,
+                    "${day.decom}/${day.sound}",
+                    day.notesUniform
+                )
+
+                x = 30f
+                for (i in cells.indices) {
+                    val text = cells[i]
+                    val drawText = if (text.length > 15) text.take(13) + ".." else text
+                    val paintToUse = if (i == 0) boldCellPaint else cellPaint
+                    canvas.drawText(drawText, x + 5f, y + 16f, paintToUse)
+                    x += colSize
+                }
+                y += rowHeight
+            }
+
+            // Cuadro de Anuncios Generales
+            y += 20f
+            canvas.drawRect(30f, y, width - 30f, y + 150f, borderPaint)
+            canvas.drawRect(30f, y, width - 30f, y + 25f, headerBgPaint)
+            canvas.drawRect(30f, y, width - 30f, y + 25f, royalBorderPaint)
+
+            val annTitlePaint = Paint().apply {
+                color = AndroidColor.parseColor("#1E3A8A")
+                textSize = 10f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            canvas.drawText("ANUNCIOS GENERALES Y AVISOS DE LA SEMANA", 40f, y + 17f, annTitlePaint)
+            y += 35f
+
+            val lines = bulletin.generalAnnouncements.split("\n")
+            var lineY = y
+            for (line in lines) {
+                if (lineY < height - 40f) {
+                    val wrapText = if (line.length > 90) line.take(87) + "..." else line
+                    canvas.drawText(wrapText, 45f, lineY, cellPaint)
+                    lineY += 14f
+                }
+            }
+
+            pdfDocument.finishPage(page)
+
+            try {
+                pdfDocument.writeTo(java.io.FileOutputStream(destination.fileDescriptor))
+                callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES))
+            } catch (e: Exception) {
+                callback.onWriteFailed(e.message)
+            } finally {
+                pdfDocument.close()
+            }
+        }
+    }, null)
+}
+
+fun shareOnWhatsApp(context: Context, bulletin: WeeklyBulletin) {
+    val formattedText = buildString {
+        append("📋 *BOLETÍN SEMANAL Y ANUNCIOS* 📋\n")
+        append("📅 _Rango de Fechas:_ ${bulletin.dateRange}\n")
+        append("👥 _Comité / Grupo a Cargo:_ ${bulletin.committee}\n\n")
+        append("━━━━━━━━━━━━━━━━━━━━\n")
+        append("✨ *CRONOGRAMA DE SERVICIOS* ✨\n")
+        append("━━━━━━━━━━━━━━━━━━━━\n\n")
+
+        for (day in bulletin.days) {
+            if (day.serviceName.isNotBlank()) {
+                append("📆 *${day.dayName.uppercase()}*\n")
+                append("⛪ _Culto:_ ${day.serviceName}\n")
+                if (day.time.isNotBlank()) append("⏰ _Hora:_ ${day.time}\n")
+                if (day.worshipTeam.isNotBlank()) append("🎵 _Alabanza:_ ${day.worshipTeam}\n")
+                if (day.ushers.isNotBlank()) append("🤝 _Ujieres:_ ${day.ushers}\n")
+                if (day.decom.isNotBlank() || day.sound.isNotBlank()) {
+                    append("💻 _Multimedia/Sonido:_ ${day.decom} / ${day.sound}\n")
+                }
+                if (day.notesUniform.isNotBlank()) append("👔 _Uniforme/Notas:_ ${day.notesUniform}\n")
+                append("\n")
+            }
+        }
+
+        append("━━━━━━━━━━━━━━━━━━━━\n")
+        append("📢 *ANUNCIOS Y AVISOS* 📢\n")
+        append("━━━━━━━━━━━━━━━━━━━━\n\n")
+        if (bulletin.generalAnnouncements.isNotBlank()) {
+            append(bulletin.generalAnnouncements)
+        } else {
+            append("No hay anuncios registrados para esta semana.")
+        }
+    }
+
+    // Copiar al Portapapeles
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText("Boletin Eclesiastico", formattedText)
+    clipboard.setPrimaryClip(clip)
+    Toast.makeText(context, "Resumen copiado al portapapeles", Toast.LENGTH_SHORT).show()
+
+    // Compartir a WhatsApp o General
+    val sendIntent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_TEXT, formattedText)
+        type = "text/plain"
+    }
+
+    try {
+        val shareIntent = Intent.createChooser(sendIntent, "Compartir Boletín")
+        context.startActivity(shareIntent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error al compartir: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
