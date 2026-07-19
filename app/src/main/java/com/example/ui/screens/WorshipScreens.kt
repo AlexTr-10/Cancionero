@@ -265,6 +265,15 @@ fun AppNavigationWrapper(viewModel: WorshipViewModel) {
 fun HomeScreen(viewModel: WorshipViewModel) {
     val isSessionActive by viewModel.isSessionActive.collectAsState()
     val memberStatus by viewModel.memberStatus.collectAsState()
+    val favoritesList by viewModel.favorites.collectAsState()
+    val favoritesCount = favoritesList.size
+    val favoritesSubtitle = if (favoritesCount == 0) {
+        "Mis canciones preferidas"
+    } else if (favoritesCount == 1) {
+        "1 canción guardada"
+    } else {
+        "$favoritesCount canciones guardadas"
+    }
 
     Column(
         modifier = Modifier
@@ -403,7 +412,7 @@ fun HomeScreen(viewModel: WorshipViewModel) {
             item(span = { GridItemSpan(1) }) {
                 HomeCard(
                     title = "Favoritos",
-                    subtitle = "Mis canciones preferidas",
+                    subtitle = favoritesSubtitle,
                     icon = Icons.Default.Favorite,
                     color = Color(0xFFE91E63),
                     tag = "btn_favoritos"
@@ -613,12 +622,12 @@ fun SongBookScreen(viewModel: WorshipViewModel) {
     var selectedCategory by remember { mutableStateOf("Todas") }
 
     val categories by viewModel.categories.collectAsState()
-    val categoriesWithAll = remember(categories) { listOf("Todas") + categories }
+    val categoriesWithAll = remember(categories) { listOf("Todas", "Favoritos") + categories }
     val filteredSongs = remember(songList, selectedCategory) {
-        if (selectedCategory == "Todas") {
-            songList
-        } else {
-            songList.filter { it.category == selectedCategory }
+        when (selectedCategory) {
+            "Todas" -> songList
+            "Favoritos" -> songList.filter { it.isFavorite }
+            else -> songList.filter { it.category == selectedCategory }
         }
     }
 
@@ -671,7 +680,20 @@ fun SongBookScreen(viewModel: WorshipViewModel) {
                     Tab(
                         selected = selectedCategory == cat,
                         onClick = { selectedCategory = cat },
-                        text = { Text(cat, fontWeight = FontWeight.Bold) }
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (cat == "Favoritos") {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = null,
+                                        tint = if (selectedCategory == cat) Color.Red else Color.Gray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(cat, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     )
                 }
             }

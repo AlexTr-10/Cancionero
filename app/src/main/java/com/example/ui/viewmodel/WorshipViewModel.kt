@@ -430,6 +430,113 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Smart Import Songs
+    private fun cleanAndExtractLyrics(rawLyrics: Any?): String {
+        if (rawLyrics == null) return ""
+        
+        fun extractTextFromVerseObject(jsonObj: JSONObject): String? {
+            val fields = listOf("full_text", "text", "lyrics", "content", "verse", "body")
+            for (field in fields) {
+                val value = jsonObj.optString(field, "")
+                if (value.isNotEmpty()) {
+                    return value
+                }
+            }
+            val keys = jsonObj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val valStr = jsonObj.optString(key, "")
+                if (valStr.isNotEmpty() && key != "number" && key != "id" && key != "type") {
+                    return valStr
+                }
+            }
+            return null
+        }
+
+        fun processJsonArray(array: JSONArray): String {
+            val sb = StringBuilder()
+            for (i in 0 until array.length()) {
+                val item = array.get(i)
+                if (item is JSONObject) {
+                    val text = extractTextFromVerseObject(item)
+                    if (!text.isNullOrEmpty()) {
+                        if (sb.isNotEmpty()) {
+                            sb.append("\n\n")
+                        }
+                        sb.append(text)
+                    }
+                } else if (item != null) {
+                    val text = item.toString()
+                    if (text.isNotEmpty()) {
+                        if (sb.isNotEmpty()) {
+                            sb.append("\n\n")
+                        }
+                        sb.append(text)
+                    }
+                }
+            }
+            return sb.toString()
+        }
+
+        fun processJsonObject(obj: JSONObject): String {
+            val arrayFields = listOf("verses", "stanzas", "paragraphs", "lines")
+            for (field in arrayFields) {
+                val arr = obj.optJSONArray(field)
+                if (arr != null) {
+                    return processJsonArray(arr)
+                }
+            }
+            val directText = extractTextFromVerseObject(obj)
+            if (!directText.isNullOrEmpty()) {
+                return directText
+            }
+            return obj.toString()
+        }
+
+        var cleanedLyrics = ""
+        try {
+            if (rawLyrics is JSONArray) {
+                cleanedLyrics = processJsonArray(rawLyrics)
+            } else if (rawLyrics is JSONObject) {
+                cleanedLyrics = processJsonObject(rawLyrics)
+            } else {
+                val str = rawLyrics.toString().trim()
+                if (str.startsWith("[") && str.endsWith("]")) {
+                    try {
+                        val array = JSONArray(str)
+                        cleanedLyrics = processJsonArray(array)
+                    } catch (e: Exception) {
+                        cleanedLyrics = str
+                    }
+                } else if (str.startsWith("{") && str.endsWith("}")) {
+                    try {
+                        val obj = JSONObject(str)
+                        cleanedLyrics = processJsonObject(obj)
+                    } catch (e: Exception) {
+                        cleanedLyrics = str
+                    }
+                } else {
+                    cleanedLyrics = str
+                }
+            }
+        } catch (e: Exception) {
+            cleanedLyrics = rawLyrics.toString()
+        }
+
+        if (cleanedLyrics.contains("\\")) {
+            cleanedLyrics = cleanedLyrics
+                .replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\\"", "\"")
+                .replace("\\t", "\t")
+        }
+
+        if (cleanedLyrics.startsWith("\"") && cleanedLyrics.endsWith("\"") && cleanedLyrics.length >= 2) {
+            cleanedLyrics = cleanedLyrics.substring(1, cleanedLyrics.length - 1)
+        }
+
+        return cleanedLyrics.trim()
+    }
+
     fun analyzeImportFile(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -448,7 +555,10 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
                     val title = obj.getString("title")
                     val category = obj.optString("category", "Otros")
                     val key = obj.optString("key", "C")
-                    val lyrics = obj.getString("lyrics")
+                    
+                    val lyricsRaw = obj.opt("lyrics")
+                    val lyrics = cleanAndExtractLyrics(lyricsRaw)
+                    
                     val notes = obj.optString("notes", "")
                     val dateCreated = obj.optLong("dateCreated", System.currentTimeMillis())
 
