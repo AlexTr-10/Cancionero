@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -619,7 +620,11 @@ fun FeaturedHomeCard(
 @Composable
 fun SongBookScreen(viewModel: WorshipViewModel) {
     val songList by viewModel.songs.collectAsState()
-    var selectedCategory by remember { mutableStateOf("Todas") }
+    var selectedCategory by remember { mutableStateOf(viewModel.songBookSelectedCategory) }
+
+    LaunchedEffect(selectedCategory) {
+        viewModel.songBookSelectedCategory = selectedCategory
+    }
 
     val categories by viewModel.categories.collectAsState()
     val categoriesWithAll = remember(categories) { listOf("Todas", "Favoritos") + categories }
@@ -629,6 +634,28 @@ fun SongBookScreen(viewModel: WorshipViewModel) {
             "Favoritos" -> songList.filter { it.isFavorite }
             else -> songList.filter { it.category == selectedCategory }
         }
+    }
+
+    val listState = rememberLazyListState()
+    var isScrollRestored by remember { mutableStateOf(false) }
+
+    LaunchedEffect(filteredSongs) {
+        if (filteredSongs.isNotEmpty() && !isScrollRestored) {
+            if (viewModel.songBookScrollIndex < filteredSongs.size) {
+                listState.scrollToItem(viewModel.songBookScrollIndex, viewModel.songBookScrollOffset)
+            }
+            isScrollRestored = true
+        }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
+            .collect { (index, offset) ->
+                if (isScrollRestored) {
+                    viewModel.songBookScrollIndex = index
+                    viewModel.songBookScrollOffset = offset
+                }
+            }
     }
 
     Scaffold(
@@ -725,6 +752,7 @@ fun SongBookScreen(viewModel: WorshipViewModel) {
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .weight(1f)
@@ -1902,6 +1930,28 @@ fun CreateMosaicScreen(viewModel: WorshipViewModel) {
 fun FavoritesScreen(viewModel: WorshipViewModel) {
     val favoriteList by viewModel.favorites.collectAsState()
 
+    val listState = rememberLazyListState()
+    var isScrollRestored by remember { mutableStateOf(false) }
+
+    LaunchedEffect(favoriteList) {
+        if (favoriteList.isNotEmpty() && !isScrollRestored) {
+            if (viewModel.favoritesScrollIndex < favoriteList.size) {
+                listState.scrollToItem(viewModel.favoritesScrollIndex, viewModel.favoritesScrollOffset)
+            }
+            isScrollRestored = true
+        }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
+            .collect { (index, offset) ->
+                if (isScrollRestored) {
+                    viewModel.favoritesScrollIndex = index
+                    viewModel.favoritesScrollOffset = offset
+                }
+            }
+    }
+
     Scaffold(
         topBar = {
             Row(
@@ -1938,6 +1988,7 @@ fun FavoritesScreen(viewModel: WorshipViewModel) {
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
@@ -1962,7 +2013,11 @@ fun FavoritesScreen(viewModel: WorshipViewModel) {
 @Composable
 fun SearchScreen(viewModel: WorshipViewModel) {
     val songList by viewModel.songs.collectAsState()
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(viewModel.searchQuery) }
+
+    LaunchedEffect(query) {
+        viewModel.searchQuery = query
+    }
 
     val searchResults = remember(songList, query) {
         if (query.trim().isEmpty()) {
@@ -1975,6 +2030,28 @@ fun SearchScreen(viewModel: WorshipViewModel) {
                 it.key.contains(query, ignoreCase = true)
             }
         }
+    }
+
+    val listState = rememberLazyListState()
+    var isScrollRestored by remember { mutableStateOf(false) }
+
+    LaunchedEffect(searchResults) {
+        if (searchResults.isNotEmpty() && !isScrollRestored) {
+            if (viewModel.searchScrollIndex < searchResults.size) {
+                listState.scrollToItem(viewModel.searchScrollIndex, viewModel.searchScrollOffset)
+            }
+            isScrollRestored = true
+        }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
+            .collect { (index, offset) ->
+                if (isScrollRestored) {
+                    viewModel.searchScrollIndex = index
+                    viewModel.searchScrollOffset = offset
+                }
+            }
     }
 
     Scaffold(
@@ -2039,6 +2116,7 @@ fun SearchScreen(viewModel: WorshipViewModel) {
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 8.dp)
@@ -2961,6 +3039,25 @@ fun SettingsScreen(viewModel: WorshipViewModel) {
                 Switch(
                     checked = viewModel.showChordsByDefault,
                     onCheckedChange = { viewModel.updateShowChordsByDefault(it) }
+                )
+            }
+
+            Divider()
+
+            // Haptic Feedback Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Vibración por comandos", fontWeight = FontWeight.Bold)
+                    Text("Vibrar brevemente al recibir cambios del director", fontSize = 12.sp, color = Color.Gray)
+                }
+                Switch(
+                    checked = viewModel.hapticFeedbackEnabled,
+                    onCheckedChange = { viewModel.updateHapticFeedbackEnabled(it) },
+                    modifier = Modifier.testTag("switch_haptic_feedback")
                 )
             }
 

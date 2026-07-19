@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import android.os.Vibrator
+import android.os.VibrationEffect
 import java.io.File
 import java.io.FileOutputStream
 
@@ -88,8 +90,22 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
     private val backStack = mutableListOf<Screen>()
 
+    // Persistent UI States for Scroll position preservation
+    var songBookSelectedCategory by mutableStateOf("Todas")
+    var songBookScrollIndex by mutableStateOf(0)
+    var songBookScrollOffset by mutableStateOf(0)
+
+    var favoritesScrollIndex by mutableStateOf(0)
+    var favoritesScrollOffset by mutableStateOf(0)
+
+    var searchQuery by mutableStateOf("")
+    var searchScrollIndex by mutableStateOf(0)
+    var searchScrollOffset by mutableStateOf(0)
+
     // Settings
     var isDarkMode by mutableStateOf(sharedPrefs.getBoolean("dark_mode", true))
+        private set
+    var hapticFeedbackEnabled by mutableStateOf(sharedPrefs.getBoolean("haptic_feedback_enabled", true))
         private set
     var worshipFontSize by mutableStateOf(sharedPrefs.getFloat("worship_font_size", 28f))
         private set
@@ -199,6 +215,11 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
     fun updateDarkMode(enabled: Boolean) {
         isDarkMode = enabled
         sharedPrefs.edit().putBoolean("dark_mode", enabled).apply()
+    }
+
+    fun updateHapticFeedbackEnabled(enabled: Boolean) {
+        hapticFeedbackEnabled = enabled
+        sharedPrefs.edit().putBoolean("haptic_feedback_enabled", enabled).apply()
     }
 
     fun updateWorshipFontSize(size: Float) {
@@ -361,6 +382,31 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
         _memberStatus.value = WorshipClient.ConnectionStatus.DISCONNECTED
     }
 
+    private fun triggerHapticFeedback() {
+        if (!hapticFeedbackEnabled) return
+        try {
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vibratorManager = getApplication<Application>().getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager
+                vibratorManager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getApplication<Application>().getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val timings = longArrayOf(0, 100, 100, 100)
+                val amplitudes = intArrayOf(0, VibrationEffect.DEFAULT_AMPLITUDE, 0, VibrationEffect.DEFAULT_AMPLITUDE)
+                val effect = VibrationEffect.createWaveform(timings, amplitudes, -1)
+                vibrator.vibrate(effect)
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(longArrayOf(0, 100, 100, 100), -1)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to vibrate: ${e.message}")
+        }
+    }
+
     private fun handleIncomingSessionMessage(rawMessage: String) {
         viewModelScope.launch(Dispatchers.Main) {
             try {
@@ -369,6 +415,7 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
                     "overlay" -> {
                         val message = json.getString("message")
                         _activeOverlayMessage.value = message
+                        triggerHapticFeedback()
                         viewModelScope.launch {
                             delay(4000)
                             if (_activeOverlayMessage.value == message) {
@@ -382,6 +429,7 @@ class WorshipViewModel(application: Application) : AndroidViewModel(application)
                         
                         // Show short alert
                         _activeOverlayMessage.value = "📖 El Director abrió: $title"
+                        triggerHapticFeedback()
                         viewModelScope.launch {
                             delay(3000)
                             if (_activeOverlayMessage.value?.contains(title) == true) {
