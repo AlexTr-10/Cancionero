@@ -21,16 +21,20 @@ jobs:
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
+      with:
+        cache-disabled: true
 
-    # Crea un archivo google-services.json dummy si no existe para evitar el error de Firebase
-    - name: Create Dummy Google Services JSON
+    - name: Create Dummy Google Services & Env
       run: |
         if [ ! -f "app/google-services.json" ]; then
           echo '{"project_info":{"project_number":"0","project_id":"dummy","storage_bucket":"dummy.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0","android_client_info":{"package_name":"com.example.app"}},"oauth_client":[],"api_key":[{"current_key":"dummy"}],"services":{"analytics_service":{"status":1}}}]}' > app/google-services.json
         fi
+        echo "GEMINI_API_KEY=AIzaSyDummyKeyForBuildOnly12345" > .env
+        echo "GEMINI_API_KEY=AIzaSyDummyKeyForBuildOnly12345" >> local.properties
 
-    # Compila el APK omitiendo las tareas de validación de firma que fallan
     - name: Build APK with Gradle
+      env:
+        GEMINI_API_KEY: "AIzaSyDummyKeyForBuildOnly12345"
       run: gradle assembleDebug -x validateSigningDebug --stacktrace
 
     - name: Upload APK Artifact
@@ -38,3 +42,4 @@ jobs:
       with:
         name: Secretaria-Eclesiastica-APK
         path: app/build/outputs/apk/debug/app-debug.apk
+        
