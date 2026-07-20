@@ -24,11 +24,10 @@ jobs:
       with:
         cache-disabled: true
 
-    - name: Create Dummy Google Services & Env
+    - name: Create Google Services & Env
       run: |
-        if [ ! -f "app/google-services.json" ]; then
-          echo '{"project_info":{"project_number":"0","project_id":"dummy","storage_bucket":"dummy.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0","android_client_info":{"package_name":"com.example.app"}},"oauth_client":[],"api_key":[{"current_key":"dummy"}],"services":{"analytics_service":{"status":1}}}]}' > app/google-services.json
-        fi
+        mkdir -p app
+        echo '{"project_info":{"project_number":"0","project_id":"cancionero","storage_bucket":"cancionero.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0","android_client_info":{"package_name":"com.aistudio.cancionero.worship"}},"oauth_client":[],"api_key":[{"current_key":"dummy_key"}],"services":{"analytics_service":{"status":1}}}]}' > app/google-services.json
         echo "GEMINI_API_KEY=AIzaSyDummyKeyForBuildOnly12345" > .env
         echo "GEMINI_API_KEY=AIzaSyDummyKeyForBuildOnly12345" >> local.properties
 
