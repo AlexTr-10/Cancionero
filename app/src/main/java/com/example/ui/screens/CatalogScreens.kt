@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,10 +23,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -34,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.R
 import com.example.data.model.CatalogProduct
 import com.example.data.model.CompanyProfile
 import com.example.ui.viewmodel.DropshipViewModel
@@ -59,6 +67,55 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
     var selectedStatus by remember { mutableStateOf("Todos") }
     var selectedTag by remember { mutableStateOf("Todos") }
     var viewMode by remember { mutableStateOf(CatalogViewMode.GRID) }
+
+    var isTopBarVisible by remember { mutableStateOf(true) }
+    var accumulatedScrollDelta by remember { mutableStateOf(0f) }
+
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val storeListState = rememberLazyListState()
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta < 0) { // Scrolling down -> hide top bar
+                    if (accumulatedScrollDelta > 0) accumulatedScrollDelta = 0f
+                    accumulatedScrollDelta += delta
+                    if (accumulatedScrollDelta < -30f && isTopBarVisible) {
+                        isTopBarVisible = false
+                        accumulatedScrollDelta = 0f
+                    }
+                } else if (delta > 0) { // Scrolling up -> show top bar if delta > threshold
+                    if (accumulatedScrollDelta < 0) accumulatedScrollDelta = 0f
+                    accumulatedScrollDelta += delta
+                    if (accumulatedScrollDelta > 45f && !isTopBarVisible) {
+                        isTopBarVisible = true
+                        accumulatedScrollDelta = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 20) {
+            isTopBarVisible = true
+        }
+    }
+
+    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
+        if (gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < 20) {
+            isTopBarVisible = true
+        }
+    }
+
+    LaunchedEffect(storeListState.firstVisibleItemIndex, storeListState.firstVisibleItemScrollOffset) {
+        if (storeListState.firstVisibleItemIndex == 0 && storeListState.firstVisibleItemScrollOffset < 20) {
+            isTopBarVisible = true
+        }
+    }
 
     var selectedAddCategoryDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -106,14 +163,20 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
                 .fillMaxSize()
                 .padding(padding)
                 .background(MLBackgroundLight)
+                .nestedScroll(nestedScrollConnection)
         ) {
-            // TOP BANNER & SEARCH BAR
-            Surface(
-                color = Color.White,
-                shadowElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
+            // TOP BANNER & SEARCH BAR WITH SMART COLLAPSE
+            AnimatedVisibility(
+                visible = isTopBarVisible,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                     // MULTI-SELECTION CONTEXTUAL ACTION BAR
                     AnimatedVisibility(visible = isSelectionMode) {
                         Surface(
@@ -196,18 +259,31 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "Catálogo de Productos",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
-                                color = Color(0xFF0F172A)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.img_app_logo),
+                                contentDescription = "Logo Catálogo Pro",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                contentScale = ContentScale.Crop
                             )
-                            Text(
-                                text = "${filteredProducts.size} productos registrados",
-                                fontSize = 12.sp,
-                                color = Color(0xFF64748B)
-                            )
+                            Column {
+                                Text(
+                                    text = "Catálogo de Productos",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 19.sp,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = "${filteredProducts.size} productos registrados",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -387,6 +463,7 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
                     }
                 }
             }
+        }
 
             // PRODUCT DISPLAY CONTENT
             if (filteredProducts.isEmpty()) {
@@ -422,6 +499,7 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
                 when (viewMode) {
                     CatalogViewMode.LIST -> {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
@@ -451,6 +529,7 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
                     }
                     CatalogViewMode.GRID -> {
                         LazyVerticalGrid(
+                            state = gridState,
                             columns = GridCells.Fixed(2),
                             contentPadding = PaddingValues(16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -482,6 +561,7 @@ fun CatalogScreen(viewModel: DropshipViewModel, onNavigateToCompany: () -> Unit)
                     }
                     CatalogViewMode.STORE -> {
                         LazyColumn(
+                            state = storeListState,
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
