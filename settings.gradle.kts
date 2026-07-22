@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Secretaría Eclesiástica"
+rootProject.name = "DropiML"
 
 include(":app")

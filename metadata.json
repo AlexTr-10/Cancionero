@@ -1,6 +1,6 @@
 {
-  "name": "Secretaría Eclesiástica",
-  "description": "Aplicación de Secretaría Eclesiástica para gestionar el Boletín Semanal, Cronograma Anual, y visualización en el púlpito.",
+  "name": "Catálogo Vendedores Pro",
+  "description": "Herramienta completa para vendedores con Catálogo de Productos profesional, exportación PDF para WhatsApp, Calculadora de Rentabilidad, Ranking y datos de Mi Empresa.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
