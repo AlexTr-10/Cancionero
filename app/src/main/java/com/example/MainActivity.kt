@@ -8,22 +8,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.ui.screens.DropshipNavigationWrapper
+import com.example.ui.screens.AppNavigationWrapper
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.viewmodel.DropshipViewModel
+import com.example.ui.viewmodel.WorshipViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val viewModel: DropshipViewModel = viewModel()
-            // Use lightTheme (darkTheme = false) for the Mercado Libre white/yellow/blue professional branding
-            MyApplicationTheme(darkTheme = false) {
+            val viewModel: WorshipViewModel = viewModel()
+            MyApplicationTheme(darkTheme = viewModel.isDarkMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    DropshipNavigationWrapper(viewModel)
+                    AppNavigationWrapper(viewModel)
                 }
             }
         }

@@ -4,30 +4,21 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.data.dao.CatalogDao
-import com.example.data.dao.ChecklistItemDao
-import com.example.data.dao.DropshipProductDao
-import com.example.data.model.CatalogProduct
-import com.example.data.model.CategoryItem
-import com.example.data.model.ChecklistItem
-import com.example.data.model.CompanyProfile
-import com.example.data.model.DropshipProduct
+import com.example.data.dao.MosaicDao
+import com.example.data.dao.SongDao
+import com.example.data.dao.TodayListHistoryDao
+import com.example.data.dao.WorshipCommandDao
+import com.example.data.model.Mosaic
+import com.example.data.model.Song
+import com.example.data.model.TodayListHistory
+import com.example.data.model.WorshipCommand
 
-@Database(
-    entities = [
-        DropshipProduct::class,
-        ChecklistItem::class,
-        CatalogProduct::class,
-        CategoryItem::class,
-        CompanyProfile::class
-    ],
-    version = 3,
-    exportSchema = false
-)
+@Database(entities = [Song::class, Mosaic::class, WorshipCommand::class, TodayListHistory::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun dropshipProductDao(): DropshipProductDao
-    abstract fun checklistItemDao(): ChecklistItemDao
-    abstract fun catalogDao(): CatalogDao
+    abstract fun songDao(): SongDao
+    abstract fun mosaicDao(): MosaicDao
+    abstract fun commandDao(): WorshipCommandDao
+    abstract fun todayListHistoryDao(): TodayListHistoryDao
 
     companion object {
         @Volatile
@@ -38,7 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "dropship_database"
+                    "cancionero_database"
                 )
                     .fallbackToDestructiveMigration()
                     .build()

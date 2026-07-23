@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "DropiML"
+rootProject.name = "Cancionero de Alabanza"
 
 include(":app")
