@@ -14,15 +14,24 @@ interface MosaicDao {
     @Query("SELECT * FROM mosaics ORDER BY dateCreated DESC")
     fun getAllMosaics(): Flow<List<Mosaic>>
 
+    @Query("SELECT * FROM mosaics ORDER BY dateCreated DESC")
+    suspend fun getMosaicsSync(): List<Mosaic>
+
     @Query("SELECT * FROM mosaics WHERE id = :id")
     suspend fun getMosaicById(id: Long): Mosaic?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMosaic(mosaic: Mosaic): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMosaics(mosaics: List<Mosaic>)
+
     @Update
     suspend fun updateMosaic(mosaic: Mosaic)
 
     @Delete
     suspend fun deleteMosaic(mosaic: Mosaic)
+
+    @Query("DELETE FROM mosaics")
+    suspend fun deleteAllMosaics()
 }

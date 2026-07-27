@@ -1,8 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="72dp"
-        android:height="72dp"
-        android:drawable="@drawable/img_app_icon"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Golden Ribbon Bookmark (extending from bottom) -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M42,75 L48,75 L48,87 L45,84 L42,87 Z" />
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M45,75 L48,75 L48,87 L45,84 Z" />
+
+    <!-- Ledger / Folder Base (Dark Navy with Gold Frame) -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M30,25 L78,25 C80.8,25 83,27.2 83,30 L83,80 C83,82.8 80.8,85 78,85 L30,85 C27.2,85 25,82.8 25,80 L25,30 C25,27.2 27.2,25 30,25 Z M30,27 C28.3,27 27,28.3 27,30 L27,80 C27,81.7 28.3,83 30,83 L78,83 C79.7,83 81,81.7 81,80 L81,30 C81,28.3 79.7,27 78,27 L30,27 Z" />
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M30,26 L78,26 C80.2,26 82,27.8 82,30 L82,80 C82,82.2 80.2,84 78,84 L30,84 C27.8,84 26,82.2 26,80 L26,30 C26,27.8 27.8,26 30,26 Z" />
+
+    <!-- Paper Sheet (Crisp White with Gold Top Accent) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M31,31 L77,31 C78.1,31 79,31.9 79,33 L79,77 C79,78.1 78.1,79 77,79 L31,79 C29.9,79 29,78.1 29,77 L29,33 C29,31.9 29.9,31 31,31 Z" />
+    <path
+        android:fillColor="#FEF3C7"
+        android:pathData="M29,33 C29,31.9 29.9,31 31,31 L77,31 C78.1,31 79,31.9 79,33 L79,41 L29,41 Z" />
+
+    <!-- Document Record Lines -->
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M36,46 L58,46 C58.6,46 59,46.4 59,47 C59,47.6 58.6,48 58,48 L36,48 C35.4,48 35,47.6 35,47 C35,46.4 35.4,46 36,46 Z" />
+    <path
+        android:fillColor="#64748B"
+        android:pathData="M36,53 L72,53 C72.6,53 73,53.4 73,54 C73,54.6 72.6,55 72,55 L36,55 C35.4,55 35,54.6 35,54 C35,53.4 35.4,53 36,53 Z" />
+    <path
+        android:fillColor="#64748B"
+        android:pathData="M36,60 L68,60 C68.6,60 69,60.4 69,61 C69,61.6 68.6,62 68,62 L36,62 C35.4,62 35,61.6 35,61 C35,60.4 35.4,60 36,60 Z" />
+    <path
+        android:fillColor="#64748B"
+        android:pathData="M36,67 L62,67 C62.6,67 63,67.4 63,68 C63,68.6 62.6,69 62,69 L36,69 C35.4,69 35,68.6 35,68 C35,67.4 35.4,67 36,67 Z" />
+
+    <!-- Top Clipboard Clip (Gold) -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M43,21 L65,21 C66.7,21 68,22.3 68,24 L68,29 C68,30.7 66.7,32 65,32 L43,32 C41.3,32 40,30.7 40,29 L40,24 C40,22.3 41.3,21 43,21 Z" />
+    <path
+        android:fillColor="#B45309"
+        android:pathData="M43,22 L65,22 C66.1,22 67,22.9 67,24 L67,25 L41,25 L41,24 C41,22.9 41.9,22 43,22 Z" />
+
+    <!-- Ecclesiastical Cross Symbol on Clip -->
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M53,24 L55,24 L55,30 L53,30 Z" />
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M51,26 L57,26 L57,28 L51,28 Z" />
+
+    <!-- Golden Quill Pen (Pluma Estilográfica) -->
+    <!-- Nib -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M54,43 L57,48 L52,48 Z" />
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M54,43 L54,46 Z" />
+
+    <!-- Feather Shaft -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M53,49 C57,53 66,62 76,71 C77.5,72.5 76.5,74.5 74.5,74.5 C68,66 58,55 52,50 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M53.5,49.5 C57,53 65,61 74,70 C75,71 74.5,72.5 73,72.5 C67,65 58,55 52.5,50 Z" />
+</vector>

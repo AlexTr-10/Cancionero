@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Cancionero de Alabanza"
+rootProject.name = "Secretaría Eclesiástica"
 
 include(":app")

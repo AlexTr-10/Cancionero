@@ -4,7 +4,6 @@ import android.content.Context
 import com.example.data.AppDatabase
 import com.example.data.model.Mosaic
 import com.example.data.model.Song
-import com.example.data.model.TodayListHistory
 import com.example.data.model.WorshipCommand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -16,29 +15,11 @@ class WorshipRepository(private val context: Context) {
     private val songDao = database.songDao()
     private val mosaicDao = database.mosaicDao()
     private val commandDao = database.commandDao()
-    private val todayListHistoryDao = database.todayListHistoryDao()
 
     val allSongs: Flow<List<Song>> = songDao.getAllSongs()
     val favoriteSongs: Flow<List<Song>> = songDao.getFavoriteSongs()
     val allMosaics: Flow<List<Mosaic>> = mosaicDao.getAllMosaics()
     val allCommands: Flow<List<WorshipCommand>> = commandDao.getAllCommands()
-    val todayListHistory: Flow<List<TodayListHistory>> = todayListHistoryDao.getAllHistory()
-
-    suspend fun getTodayListHistoryById(id: Long): TodayListHistory? = withContext(Dispatchers.IO) {
-        todayListHistoryDao.getHistoryById(id)
-    }
-
-    suspend fun insertTodayListHistory(history: TodayListHistory): Long = withContext(Dispatchers.IO) {
-        todayListHistoryDao.insertHistory(history)
-    }
-
-    suspend fun deleteTodayListHistory(history: TodayListHistory) = withContext(Dispatchers.IO) {
-        todayListHistoryDao.deleteHistory(history)
-    }
-
-    suspend fun deleteTodayListHistoryById(id: Long) = withContext(Dispatchers.IO) {
-        todayListHistoryDao.deleteHistoryById(id)
-    }
 
     suspend fun insertCommand(command: WorshipCommand): Long = withContext(Dispatchers.IO) {
         commandDao.insertCommand(command)
@@ -82,28 +63,12 @@ class WorshipRepository(private val context: Context) {
         songDao.updateSong(song)
     }
 
-    suspend fun updateSongs(songs: List<Song>) = withContext(Dispatchers.IO) {
-        songDao.updateSongs(songs)
-    }
-
     suspend fun deleteSong(song: Song) = withContext(Dispatchers.IO) {
         songDao.deleteSong(song)
     }
 
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) = withContext(Dispatchers.IO) {
         songDao.updateFavoriteStatus(id, isFavorite)
-    }
-
-    suspend fun updateBatchCategory(ids: List<Long>, category: String) = withContext(Dispatchers.IO) {
-        if (ids.isNotEmpty()) songDao.updateBatchCategory(ids, category)
-    }
-
-    suspend fun updateBatchKey(ids: List<Long>, key: String) = withContext(Dispatchers.IO) {
-        if (ids.isNotEmpty()) songDao.updateBatchKey(ids, key)
-    }
-
-    suspend fun deleteBatchSongs(ids: List<Long>) = withContext(Dispatchers.IO) {
-        if (ids.isNotEmpty()) songDao.deleteBatchSongs(ids)
     }
 
     suspend fun getMosaicById(id: Long): Mosaic? = withContext(Dispatchers.IO) {
@@ -146,8 +111,7 @@ Al re[G]correr los montes [C]y los valles
 Y ver las [G]bellas flores [D]al pa[G]sar
 Al escuchar el [C]canto de las aves
 Y el murmu[G]rar del claro [D]manan[G]tial""",
-                    notes = "Himno tradicional de adoración y grandeza. Mantener un ritmo lento y solemne.",
-                    displayOrder = 0
+                    notes = "Himno tradicional de adoración y grandeza. Mantener un ritmo lento y solemne."
                 ),
                 Song(
                     title = "Dios Incomparable",
@@ -167,8 +131,7 @@ Coro:
 Puente:
 [Em]Tu gracia me salvó, [C]tu amor me redimió
 [G]Toda la gloria sea a [D]Tí, Jesús""",
-                    notes = "Canción de adoración contemporánea. El puente sube de intensidad.",
-                    displayOrder = 1
+                    notes = "Canción de adoración contemporánea. El puente sube de intensidad."
                 ),
                 Song(
                     title = "Te Alabaré, Mi Buen Señor",
@@ -187,8 +150,7 @@ Coro:
 [E]¡Te alabaré! ¡Te bendeciré!
 [A]Mi corona a tus pies rendiré
 [E]Santo, Santo eres [B]Tú, mi Se[E]ñor""",
-                    notes = "Tema alegre y dinámico. Ideal para comenzar el culto.",
-                    displayOrder = 2
+                    notes = "Tema alegre y dinámico. Ideal para comenzar el culto."
                 ),
                 Song(
                     title = "Tu Fidelidad",
@@ -204,8 +166,7 @@ Coro:
 [C]Tu fidelidad es [F]grande
 [F]Nadie como [G]Tú, bendito [Em]Dios [Am]
 [Dm]Grande es tu [G]fidelid[C]ad""",
-                    notes = "Canto de adoración muy conocido. Mantener un ambiente íntimo y suave.",
-                    displayOrder = 3
+                    notes = "Canto de adoración muy conocido. Mantener un ambiente íntimo y suave."
                 ),
                 Song(
                     title = "Gracia Sublime Es",
@@ -225,8 +186,7 @@ Estrofa 2:
 [G]¿Quién trae orden al ca[C]os?
 ¿Quién nos adopta como [Em]hijos?
 El Rey de gloria, [D]el Rey de reyes""",
-                    notes = "Canción alegre. El coro se canta con mucha fuerza.",
-                    displayOrder = 4
+                    notes = "Canción alegre. El coro se canta con mucha fuerza."
                 )
             )
             songDao.insertSongs(defaultSongs)

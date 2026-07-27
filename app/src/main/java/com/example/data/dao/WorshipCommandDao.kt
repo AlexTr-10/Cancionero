@@ -14,6 +14,9 @@ interface WorshipCommandDao {
     @Query("SELECT * FROM commands ORDER BY displayOrder ASC")
     fun getAllCommands(): Flow<List<WorshipCommand>>
 
+    @Query("SELECT * FROM commands ORDER BY displayOrder ASC")
+    suspend fun getCommandsSync(): List<WorshipCommand>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCommand(command: WorshipCommand): Long
 

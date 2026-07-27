@@ -12,6 +12,5 @@ data class Song(
     val lyrics: String,
     val notes: String = "",
     val dateCreated: Long = System.currentTimeMillis(),
-    val isFavorite: Boolean = false,
-    val displayOrder: Int = 0
+    val isFavorite: Boolean = false
 )
