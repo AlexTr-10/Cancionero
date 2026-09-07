@@ -50,7 +50,6 @@ class NsdHelper(context: Context) {
         }
     }
 
-    @Suppress("DEPRECATION")
     fun discoverServices(onDiscovered: (name: String, ip: String, port: Int) -> Unit) {
         stopDiscovery()
 

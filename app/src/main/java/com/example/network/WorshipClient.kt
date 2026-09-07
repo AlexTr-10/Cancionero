@@ -1,20 +1,35 @@
 package com.example.network
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.io.PrintWriter
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.Executors
+import java.nio.charset.StandardCharsets
 
 class WorshipClient(
     private val onMessageReceived: (String) -> Unit,
     private val onStatusChanged: (ConnectionStatus) -> Unit
 ) {
-    private val TAG = "WorshipClient"
+    companion object {
+        private const val TAG = "WorshipClient"
+    }
+
     private var socket: Socket? = null
     private var writer: PrintWriter? = null
+    private var clientScope: CoroutineScope? = null
+
+    @Volatile
     private var isRunning = false
-    private val executor = Executors.newSingleThreadExecutor()
 
     enum class ConnectionStatus {
         DISCONNECTED,
@@ -22,25 +37,53 @@ class WorshipClient(
         CONNECTED
     }
 
-    fun connect(host: String, port: Int = 9876) {
+    fun connect(host: String, port: Int = 9876, memberName: String = "Integrante") {
         if (isRunning) return
         isRunning = true
         onStatusChanged(ConnectionStatus.CONNECTING)
 
-        executor.execute {
-            try {
-                socket = Socket().apply {
-                    keepAlive = true
-                }
-                socket?.connect(InetSocketAddress(host, port), 5000)
-                writer = PrintWriter(socket?.getOutputStream() ?: throw Exception("No output stream"), true)
-                val reader = (socket?.getInputStream() ?: throw Exception("No input stream")).bufferedReader()
-                
-                onStatusChanged(ConnectionStatus.CONNECTED)
-                Log.d(TAG, "Connected to $host:$port")
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        clientScope = scope
 
-                while (isRunning) {
-                    val line = reader.readLine() ?: break
+        scope.launch {
+            try {
+                val newSocket = Socket().apply {
+                    keepAlive = true
+                    tcpNoDelay = true
+                }
+                socket = newSocket
+                newSocket.connect(InetSocketAddress(host, port), 5000)
+
+                val outputStream = newSocket.getOutputStream()
+                val newWriter = PrintWriter(OutputStreamWriter(outputStream, StandardCharsets.UTF_8), true)
+                writer = newWriter
+
+                val inputStream = newSocket.getInputStream()
+                val reader = BufferedReader(InputStreamReader(inputStream, StandardCharsets.UTF_8))
+
+                onStatusChanged(ConnectionStatus.CONNECTED)
+                Log.i(TAG, "Connected to leader at $host:$port")
+
+                // Send initial greeting / identification packet to the Director
+                val nameToSend = if (memberName.trim().isNotBlank()) memberName.trim() else "Integrante"
+                val identifyPacket = JSONObject().apply {
+                    put("type", "identify")
+                    put("name", nameToSend)
+                }.toString()
+
+                synchronized(newWriter) {
+                    newWriter.println(identifyPacket)
+                    newWriter.flush()
+                }
+
+                while (isRunning && isActive && newSocket.isConnected && !newSocket.isClosed) {
+                    val line = try {
+                        reader.readLine()
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Exception reading from server: ${e.message}")
+                        null
+                    } ?: break
+
                     Log.d(TAG, "Client received: $line")
                     try {
                         onMessageReceived(line)
@@ -57,12 +100,17 @@ class WorshipClient(
     }
 
     fun sendPing() {
-        executor.execute {
+        val scope = clientScope ?: return
+        scope.launch(Dispatchers.IO) {
             try {
-                writer?.println("PING")
-                writer?.flush()
+                writer?.let { w ->
+                    synchronized(w) {
+                        w.println("PING")
+                        w.flush()
+                    }
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w(TAG, "Failed to send PING: ${e.message}")
             }
         }
     }
@@ -70,15 +118,20 @@ class WorshipClient(
     fun disconnect() {
         if (!isRunning) return
         isRunning = false
-        Log.d(TAG, "Disconnecting client...")
+        Log.i(TAG, "Disconnecting client...")
+
         try {
             socket?.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error closing client socket: ${e.message}")
         }
         socket = null
         writer = null
+
+        clientScope?.cancel()
+        clientScope = null
+
         onStatusChanged(ConnectionStatus.DISCONNECTED)
-        Log.d(TAG, "Client disconnected.")
+        Log.i(TAG, "Client disconnected.")
     }
 }

@@ -8,48 +8,50 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme =
   darkColorScheme(
-    primary = DarkPrimary,
-    onPrimary = Color.White,
-    primaryContainer = RoyalBlue,
-    onPrimaryContainer = Color.White,
-    secondary = DarkAccent,
-    onSecondary = Color.Black,
-    secondaryContainer = DarkSurface,
-    onSecondaryContainer = Color.White,
-    background = DarkBackground,
-    onBackground = DarkOnBackground,
-    surface = DarkSurface,
-    onSurface = DarkOnBackground,
-    outline = Color.Gray,
-    outlineVariant = Color.DarkGray
+    primary = SophisticatedPrimary,
+    onPrimary = SophisticatedOnPrimary,
+    primaryContainer = SophisticatedPrimaryContainer,
+    onPrimaryContainer = SophisticatedOnPrimaryContainer,
+    secondaryContainer = SophisticatedSecondaryContainer,
+    onSecondaryContainer = SophisticatedOnSecondaryContainer,
+    tertiary = SophisticatedTertiary,
+    onTertiary = SophisticatedOnTertiary,
+    background = SophisticatedBackground,
+    onBackground = SophisticatedOnBackground,
+    surface = SophisticatedSurface,
+    onSurface = SophisticatedOnSurface,
+    outline = SophisticatedOutline,
+    outlineVariant = SophisticatedMutedText
   )
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = RoyalBlue,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFEFF6FF), // very light blue container
-    onPrimaryContainer = RoyalBlue,
-    secondary = GoldAccent,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFEF3C7), // very light amber container
-    onSecondaryContainer = GoldAccent,
-    background = BackgroundSlate,
-    onBackground = OnBackgroundDark,
-    surface = SurfaceWhite,
-    onSurface = OnBackgroundDark,
-    outline = BorderLight,
-    outlineVariant = Color.LightGray
+    primary = LightPrimary,
+    onPrimary = LightOnPrimary,
+    primaryContainer = LightPrimaryContainer,
+    onPrimaryContainer = LightOnPrimaryContainer,
+    secondaryContainer = LightSecondaryContainer,
+    onSecondaryContainer = LightOnSecondaryContainer,
+    tertiary = LightTertiary,
+    onTertiary = LightOnTertiary,
+    background = LightBackground,
+    onBackground = LightOnBackground,
+    surface = LightSurface,
+    onSurface = LightOnSurface,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightOnSurfaceVariant,
+    outline = LightOutline,
+    outlineVariant = LightMutedText
   )
 
 @Composable
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
+  // Dynamic color is disabled to preserve Sophisticated Dark aesthetic
   dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {

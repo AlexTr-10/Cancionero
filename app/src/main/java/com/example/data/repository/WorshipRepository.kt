@@ -2,8 +2,10 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.AppDatabase
+import com.example.data.model.DirectMessageEntity
 import com.example.data.model.Mosaic
 import com.example.data.model.Song
+import com.example.data.model.TodayListHistory
 import com.example.data.model.WorshipCommand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -15,11 +17,55 @@ class WorshipRepository(private val context: Context) {
     private val songDao = database.songDao()
     private val mosaicDao = database.mosaicDao()
     private val commandDao = database.commandDao()
+    private val todayListHistoryDao = database.todayListHistoryDao()
+    private val directMessageDao = database.directMessageDao()
 
     val allSongs: Flow<List<Song>> = songDao.getAllSongs()
     val favoriteSongs: Flow<List<Song>> = songDao.getFavoriteSongs()
     val allMosaics: Flow<List<Mosaic>> = mosaicDao.getAllMosaics()
     val allCommands: Flow<List<WorshipCommand>> = commandDao.getAllCommands()
+    val todayListHistory: Flow<List<TodayListHistory>> = todayListHistoryDao.getAllHistory()
+    val allDirectMessages: Flow<List<DirectMessageEntity>> = directMessageDao.getAllDirectMessages()
+
+    suspend fun insertDirectMessage(message: DirectMessageEntity): Long = withContext(Dispatchers.IO) {
+        directMessageDao.insertDirectMessage(message)
+    }
+
+    suspend fun updateDirectMessage(message: DirectMessageEntity) = withContext(Dispatchers.IO) {
+        directMessageDao.updateDirectMessage(message)
+    }
+
+    suspend fun deleteDirectMessage(message: DirectMessageEntity) = withContext(Dispatchers.IO) {
+        directMessageDao.deleteDirectMessage(message)
+    }
+
+    suspend fun resetDirectMessagesToDefault() = withContext(Dispatchers.IO) {
+        directMessageDao.deleteAllDirectMessages()
+        val defaults = listOf(
+            DirectMessageEntity(text = "REPETIMOS CORO", colorHex = "#1565C0", isDefault = true),
+            DirectMessageEntity(text = "SOLO PIANO", colorHex = "#2E7D32", isDefault = true),
+            DirectMessageEntity(text = "SOLO GUITARRA", colorHex = "#2E7D32", isDefault = true),
+            DirectMessageEntity(text = "TODA LA BANDA", colorHex = "#EF6C00", isDefault = true),
+            DirectMessageEntity(text = "TERMINAMOS", colorHex = "#C62828", isDefault = true)
+        )
+        directMessageDao.insertDirectMessages(defaults)
+    }
+
+    suspend fun getTodayListHistoryById(id: Long): TodayListHistory? = withContext(Dispatchers.IO) {
+        todayListHistoryDao.getHistoryById(id)
+    }
+
+    suspend fun insertTodayListHistory(history: TodayListHistory): Long = withContext(Dispatchers.IO) {
+        todayListHistoryDao.insertHistory(history)
+    }
+
+    suspend fun deleteTodayListHistory(history: TodayListHistory) = withContext(Dispatchers.IO) {
+        todayListHistoryDao.deleteHistory(history)
+    }
+
+    suspend fun deleteTodayListHistoryById(id: Long) = withContext(Dispatchers.IO) {
+        todayListHistoryDao.deleteHistoryById(id)
+    }
 
     suspend fun insertCommand(command: WorshipCommand): Long = withContext(Dispatchers.IO) {
         commandDao.insertCommand(command)
@@ -69,6 +115,18 @@ class WorshipRepository(private val context: Context) {
 
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) = withContext(Dispatchers.IO) {
         songDao.updateFavoriteStatus(id, isFavorite)
+    }
+
+    suspend fun updateBatchCategory(ids: List<Long>, category: String) = withContext(Dispatchers.IO) {
+        if (ids.isNotEmpty()) songDao.updateBatchCategory(ids, category)
+    }
+
+    suspend fun updateBatchKey(ids: List<Long>, key: String) = withContext(Dispatchers.IO) {
+        if (ids.isNotEmpty()) songDao.updateBatchKey(ids, key)
+    }
+
+    suspend fun deleteBatchSongs(ids: List<Long>) = withContext(Dispatchers.IO) {
+        if (ids.isNotEmpty()) songDao.deleteBatchSongs(ids)
     }
 
     suspend fun getMosaicById(id: Long): Mosaic? = withContext(Dispatchers.IO) {
@@ -202,6 +260,18 @@ El Rey de gloria, [D]el Rey de reyes""",
                 WorshipCommand(text = "🔴 TERMINAMOS", displayOrder = 4)
             )
             commandDao.insertCommands(defaults)
+        }
+
+        val currentDirectMessages = directMessageDao.getAllDirectMessages().firstOrNull()
+        if (currentDirectMessages.isNullOrEmpty()) {
+            val defaults = listOf(
+                DirectMessageEntity(text = "REPETIMOS CORO", colorHex = "#1565C0", isDefault = true),
+                DirectMessageEntity(text = "SOLO PIANO", colorHex = "#2E7D32", isDefault = true),
+                DirectMessageEntity(text = "SOLO GUITARRA", colorHex = "#2E7D32", isDefault = true),
+                DirectMessageEntity(text = "TODA LA BANDA", colorHex = "#EF6C00", isDefault = true),
+                DirectMessageEntity(text = "TERMINAMOS", colorHex = "#C62828", isDefault = true)
+            )
+            directMessageDao.insertDirectMessages(defaults)
         }
     }
 }

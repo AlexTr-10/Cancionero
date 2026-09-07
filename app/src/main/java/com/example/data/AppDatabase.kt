@@ -4,24 +4,24 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.data.dao.ActaDao
-import com.example.data.dao.DocumentDao
+import com.example.data.dao.DirectMessageDao
 import com.example.data.dao.MosaicDao
 import com.example.data.dao.SongDao
+import com.example.data.dao.TodayListHistoryDao
 import com.example.data.dao.WorshipCommandDao
-import com.example.data.model.ActaEntity
-import com.example.data.model.DocumentEntity
+import com.example.data.model.DirectMessageEntity
 import com.example.data.model.Mosaic
 import com.example.data.model.Song
+import com.example.data.model.TodayListHistory
 import com.example.data.model.WorshipCommand
 
-@Database(entities = [Song::class, Mosaic::class, WorshipCommand::class, ActaEntity::class, DocumentEntity::class], version = 5, exportSchema = false)
+@Database(entities = [Song::class, Mosaic::class, WorshipCommand::class, TodayListHistory::class, DirectMessageEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun songDao(): SongDao
     abstract fun mosaicDao(): MosaicDao
     abstract fun commandDao(): WorshipCommandDao
-    abstract fun actaDao(): ActaDao
-    abstract fun documentDao(): DocumentDao
+    abstract fun todayListHistoryDao(): TodayListHistoryDao
+    abstract fun directMessageDao(): DirectMessageDao
 
     companion object {
         @Volatile
@@ -34,7 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "cancionero_database"
                 )
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
